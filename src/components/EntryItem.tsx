@@ -1,0 +1,115 @@
+import { useState } from 'react';
+import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag } from 'lucide-react';
+import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
+import { MarkdownPreview } from './MarkdownPreview';
+
+interface EntryItemProps {
+  entry: MarkdownEntry;
+}
+
+const typeIcons: Record<string, React.ReactNode> = {
+  chat: <MessageSquare className="w-4 h-4" />,
+  journal: <BookOpen className="w-4 h-4" />,
+  todo: <CheckCircle className="w-4 h-4" />,
+  idea: <Lightbulb className="w-4 h-4" />,
+  note: <FileText className="w-4 h-4" />,
+};
+
+const typeColors: Record<string, string> = {
+  chat: 'bg-blue-100 text-blue-700',
+  journal: 'bg-green-100 text-green-700',
+  todo: 'bg-amber-100 text-amber-700',
+  idea: 'bg-pink-100 text-pink-700',
+  note: 'bg-purple-100 text-purple-700',
+};
+
+const priorityColors: Record<string, string> = {
+  urgent: 'bg-red-100 text-red-700 border-red-200',
+  high: 'bg-orange-100 text-orange-700 border-orange-200',
+  medium: 'bg-amber-100 text-amber-700 border-amber-200',
+  low: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+
+const priorityLabels: Record<string, string> = {
+  urgent: '紧急',
+  high: '重要',
+  medium: '一般',
+  low: '次要',
+};
+
+export function EntryItem({ entry }: EntryItemProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const isCompleted = entry.type === 'todo' && entry.completed;
+
+  return (
+    <div
+      className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-2 transition-all ${
+        isCompleted ? 'opacity-60' : ''
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${typeColors[entry.type] || 'bg-gray-100 text-gray-600'}`}>
+          {typeIcons[entry.type]}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${typeColors[entry.type] || 'bg-gray-100 text-gray-600'}`}>
+              {FILE_TYPE_LABELS[entry.type] || entry.type}
+            </span>
+            
+            {entry.type === 'todo' && (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${priorityColors[entry.priority]}`}>
+                {priorityLabels[entry.priority]}
+              </span>
+            )}
+
+            {entry.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {entry.tags.slice(0, 3).map(tag => (
+                  <span key={tag} className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-xs text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded">
+                {entry.sourceFile}
+              </span>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {entry.date} {entry.time || ''}
+              </span>
+            </div>
+          </div>
+
+          <div 
+            className={`text-sm text-gray-700 cursor-pointer ${isCompleted ? 'line-through' : ''}`}
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {!isExpanded ? (
+              <p className="line-clamp-2">{entry.content}</p>
+            ) : (
+              <div className="bg-gray-50 rounded-lg p-3 -mx-2">
+                <MarkdownPreview content={entry.content} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end mt-1">
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-1 text-gray-400 hover:text-amber-500 transition-colors"
+            >
+              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

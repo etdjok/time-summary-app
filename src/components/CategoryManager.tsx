@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Lock } from 'lucide-react';
-import { getStoredPassword, setStoredPassword } from '../lib/auth';
+import { changePassword } from '../lib/auth';
 import { useCategories } from '../hooks/useCategories';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -45,13 +45,8 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
     setNewLabel('');
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     setPwdMsg('');
-    if (currentPwd !== getStoredPassword()) {
-      setPwdMsg('当前密码错误');
-      setPwdMsgType('error');
-      return;
-    }
     if (!newPwd.trim() || newPwd.length < 4) {
       setPwdMsg('新密码至少4个字符');
       setPwdMsgType('error');
@@ -62,13 +57,18 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
       setPwdMsgType('error');
       return;
     }
-    setStoredPassword(newPwd);
-    setPwdMsg('密码修改成功');
-    setPwdMsgType('success');
-    setCurrentPwd('');
-    setNewPwd('');
-    setConfirmPwd('');
-    setTimeout(() => { setShowPasswordChange(false); setPwdMsg(''); }, 2000);
+    const result = await changePassword(currentPwd, newPwd);
+    if (result.success) {
+      setPwdMsg('密码修改成功，所有设备需重新登录');
+      setPwdMsgType('success');
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+      setTimeout(() => { setShowPasswordChange(false); setPwdMsg(''); }, 3000);
+    } else {
+      setPwdMsg(result.error || '修改失败');
+      setPwdMsgType('error');
+    }
   };
 
   return (

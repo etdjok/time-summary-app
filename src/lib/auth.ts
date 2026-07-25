@@ -1,12 +1,31 @@
-﻿const PASSWORD_KEY = 'heartlight_password';
-const DEFAULT_PASSWORD = 'xinguang2026';
+﻿const DEFAULT_PASSWORD = 'xinguang2026';
 
-export { PASSWORD_KEY, DEFAULT_PASSWORD };
+export { DEFAULT_PASSWORD };
 
-export function getStoredPassword(): string {
-  return localStorage.getItem(PASSWORD_KEY) || DEFAULT_PASSWORD;
+export async function verifyPassword(password: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json();
+    return data.success === true;
+  } catch {
+    return false;
+  }
 }
 
-export function setStoredPassword(password: string): void {
-  localStorage.setItem(PASSWORD_KEY, password);
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const data = await res.json();
+    return data;
+  } catch {
+    return { success: false, error: '网络错误' };
+  }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Lock, Eye, EyeOff } from 'lucide-react';
-import { getStoredPassword } from '../lib/auth';
+import { verifyPassword } from '../lib/auth';
 
 const AUTH_KEY = 'heartlight_auth';
 const AUTH_TIME_KEY = 'heartlight_auth_time';
@@ -38,9 +38,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setIsLoading(true);
     setError('');
 
-    setTimeout(() => {
-      const storedPassword = getStoredPassword();
-      if (password === storedPassword) {
+    verifyPassword(password).then((valid) => {
+      if (valid) {
         localStorage.setItem(AUTH_KEY, 'true');
         localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
         onLogin();
@@ -49,7 +48,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         setPassword('');
       }
       setIsLoading(false);
-    }, 300);
+    });
   };
 
   return (

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { parseStringPromise } from 'xml2js';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +16,49 @@ app.use(express.json({ limit: '10mb' }));
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 app.use(express.static(DIST_DIR));
+
+// 服务器端密码存储
+const PASSWORD_FILE = path.join(__dirname, 'password.json');
+const DEFAULT_PASSWORD = 'xinguang2026';
+
+function getServerPassword() {
+  try {
+    if (existsSync(PASSWORD_FILE)) {
+      const data = JSON.parse(readFileSync(PASSWORD_FILE, 'utf-8'));
+      return data.password || DEFAULT_PASSWORD;
+    }
+  } catch {}
+  return DEFAULT_PASSWORD;
+}
+
+function setServerPassword(password) {
+  writeFileSync(PASSWORD_FILE, JSON.stringify({ password }), 'utf-8');
+}
+
+// 验证密码
+app.post('/api/auth/verify', (req, res) => {
+  const { password } = req.body;
+  if (password === getServerPassword()) {
+    res.json({ success: true });
+  } else {
+    res.json({ success: false });
+  }
+});
+
+// 修改密码
+app.post('/api/auth/change-password', (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (currentPassword !== getServerPassword()) {
+    res.json({ success: false, error: '当前密码错误' });
+    return;
+  }
+  if (!newPassword || newPassword.length < 4) {
+    res.json({ success: false, error: '新密码至少4个字符' });
+    return;
+  }
+  setServerPassword(newPassword);
+  res.json({ success: true });
+});
 
 const NUTSTORE_WEBDAV_URL = 'https://dav.jianguoyun.com/dav';
 

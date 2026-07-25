@@ -5,6 +5,7 @@ import { MarkdownPreview } from './MarkdownPreview';
 
 interface EntryItemProps {
   entry: MarkdownEntry;
+  onEdit?: (entry: MarkdownEntry) => void;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -37,7 +38,7 @@ const priorityLabels: Record<string, string> = {
   low: '次要',
 };
 
-export function EntryItem({ entry }: EntryItemProps) {
+export function EntryItem({ entry, onEdit }: EntryItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isCompleted = entry.type === 'todo' && entry.completed;
@@ -62,6 +63,17 @@ export function EntryItem({ entry }: EntryItemProps) {
             {entry.type === 'todo' && (
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${priorityColors[entry.priority]}`}>
                 {priorityLabels[entry.priority]}
+              </span>
+            )}
+
+            {entry.status && entry.status !== 'in-progress' && (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                entry.status === 'completed' ? 'bg-green-100 text-green-700' :
+                entry.status === 'incomplete' ? 'bg-red-100 text-red-700' :
+                entry.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                'bg-purple-100 text-purple-700'
+              }`}>
+                {entry.status === 'completed' ? '已完成' : entry.status === 'incomplete' ? '未完成' : entry.status === 'draft' ? '草稿' : '已归档'}
               </span>
             )}
 
@@ -100,7 +112,16 @@ export function EntryItem({ entry }: EntryItemProps) {
             )}
           </div>
 
-          <div className="flex items-center justify-end mt-1">
+          <div className="flex items-center justify-end mt-1 gap-1">
+            {onEdit && (
+              <button
+                onClick={() => onEdit(entry)}
+                className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                title="编辑"
+              >
+                ✏️
+              </button>
+            )}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className="p-1 text-gray-400 hover:text-amber-500 transition-colors"

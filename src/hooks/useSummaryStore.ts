@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { MarkdownEntry, Period, PeriodType } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
-import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd } from '../lib/nutstore';
+import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, updateFileContent } from '../lib/nutstore';
 
 interface SummaryStore {
   entries: MarkdownEntry[];
@@ -28,6 +28,7 @@ interface SummaryStore {
     byPriority: Record<string, number>;
     completed: number;
   };
+  updateEntry: (entry: MarkdownEntry, updates: Partial<MarkdownEntry>) => Promise<boolean>;
 }
 
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
@@ -212,5 +213,46 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       byPriority,
       completed,
     };
+  },
+
+  updateEntry: async (entry: MarkdownEntry, updates: Partial<MarkdownEntry>): Promise<boolean> => {
+    const basePath = get().nutstoreBasePath;
+    
+    // Build the old line content
+    let oldLine = '';
+    if (entry.time) {
+      oldLine = `${entry.time} ${entry.content}`;
+    } else {
+      oldLine = entry.content;
+    }
+    if (entry.type === 'todo' && entry.completed !== undefined) {
+      oldLine = `- [${entry.completed ? 'x' : ' '}] ${oldLine}`;
+    }
+
+    // Build the new line content
+    const newContent = updates.content ?? entry.content;
+    const newType = updates.type ?? entry.type;
+    const newCompleted = updates.completed ?? entry.completed;
+    let newLine = '';
+    if (entry.time) {
+      newLine = `${entry.time} ${newContent}`;
+    } else {
+      newLine = newContent;
+    }
+    if (newType === 'todo' && newCompleted !== undefined) {
+      newLine = `- [${newCompleted ? 'x' : ' '}] ${newLine}`;
+    }
+
+    const success = await updateFileContent(basePath, entry.sourceFile, oldLine, newLine);
+    
+    if (success) {
+      set((state) => ({
+        entries: state.entries.map((e) =>
+          e.id === entry.id ? { ...e, ...updates } : e
+        ),
+      }));
+    }
+    
+    return success;
   },
 }));

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, List, Target, BarChart3 } from 'lucide-react';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
 import { SummaryList } from '../components/SummaryList';
@@ -8,8 +8,14 @@ import { NutstoreConfig } from '../components/NutstoreConfig';
 import { CategoryManager } from '../components/CategoryManager';
 import { HelpPage } from '../components/HelpPage';
 import { Changelog } from '../components/Changelog';
+import { QuadrantView } from '../components/QuadrantView';
+import { HeatmapView } from '../components/HeatmapView';
+import { EntryEditModal } from '../components/EntryEditModal';
 import { useSummaryStore } from '../hooks/useSummaryStore';
+import { MarkdownEntry } from '../types';
 import { hasCredentials } from '../lib/nutstore';
+
+type ViewMode = 'list' | 'quadrant' | 'heatmap';
 
 export default function Home() {
   const [showConfig, setShowConfig] = useState(false);
@@ -17,6 +23,8 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [editingEntry, setEditingEntry] = useState<MarkdownEntry | null>(null);
   const { loadEntries } = useSummaryStore();
 
   useEffect(() => {
@@ -28,13 +36,18 @@ export default function Home() {
     }
   }, [loadEntries]);
 
+  const handleSelectDate = (date: string) => {
+    // Could navigate to that date in the future
+    console.log('Selected date:', date);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.0 · 你的时光记录与思考空间</p>
+            <p className="text-sm text-gray-500 mt-0.5">v1.3 · 你的时光记录与思考空间</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -114,12 +127,64 @@ export default function Home() {
         {isConnected && <QuickRecord />}
 
         <PeriodNavigation />
-        <StatsCard />
-        <SummaryList />
+
+        {/* View mode switcher */}
+        {isConnected && (
+          <div className="flex gap-2 mb-4 justify-center">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                viewMode === 'list'
+                  ? 'bg-amber-500 text-white shadow-md'
+                  : 'bg-white text-gray-600 hover:bg-amber-50 shadow-sm'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              列表
+            </button>
+            <button
+              onClick={() => setViewMode('quadrant')}
+              className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                viewMode === 'quadrant'
+                  ? 'bg-amber-500 text-white shadow-md'
+                  : 'bg-white text-gray-600 hover:bg-amber-50 shadow-sm'
+              }`}
+            >
+              <Target className="w-4 h-4" />
+              四象限
+            </button>
+            <button
+              onClick={() => setViewMode('heatmap')}
+              className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                viewMode === 'heatmap'
+                  ? 'bg-amber-500 text-white shadow-md'
+                  : 'bg-white text-gray-600 hover:bg-amber-50 shadow-sm'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              热力图
+            </button>
+          </div>
+        )}
+
+        {viewMode === 'list' && (
+          <>
+            <StatsCard />
+            <SummaryList onEdit={setEditingEntry} />
+          </>
+        )}
+
+        {viewMode === 'quadrant' && (
+          <QuadrantView onEdit={setEditingEntry} />
+        )}
+
+        {viewMode === 'heatmap' && (
+          <HeatmapView onSelectDate={handleSelectDate} />
+        )}
 
         <div className="text-center mt-8 pb-6">
           <p className="text-xs text-gray-400">
-            数据来自坚果云 · 仅读取不修改 · 隐私安全
+            数据来自坚果云 · 支持编辑和重新分类 · 隐私安全
           </p>
         </div>
       </div>
@@ -143,6 +208,13 @@ export default function Home() {
 
       {showChangelog && (
         <Changelog onClose={() => setShowChangelog(false)} />
+      )}
+
+      {editingEntry && (
+        <EntryEditModal
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+        />
       )}
     </div>
   );

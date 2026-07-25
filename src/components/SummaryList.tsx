@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { List, Filter, RefreshCw, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { EntryItem } from './EntryItem';
-import { FILE_TYPE_LABELS } from '../types';
+import { FILE_TYPE_LABELS, MarkdownEntry } from '../types';
 
 const typeFilters = [
   { value: 'all', label: '全部', icon: List },
@@ -13,7 +13,11 @@ const typeFilters = [
   { value: 'note', label: '笔记', icon: FileText },
 ];
 
-export function SummaryList() {
+interface SummaryListProps {
+  onEdit?: (entry: MarkdownEntry) => void;
+}
+
+export function SummaryList({ onEdit }: SummaryListProps) {
   const { getPeriodEntries, loadEntries, loading } = useSummaryStore();
   const [typeFilter, setTypeFilter] = useState<string>('all');
   
@@ -74,7 +78,7 @@ export function SummaryList() {
       ) : (
         <div className="max-h-[60vh] overflow-y-auto -mx-2 px-2">
           {filteredEntries.map((entry, index) => (
-            <EntryItem key={`${entry.id}-${index}`} entry={entry} />
+            <EntryItem key={`${entry.id}-${index}`} entry={entry} onEdit={onEdit} />
           ))}
         </div>
       )}

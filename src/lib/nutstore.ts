@@ -290,3 +290,48 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
     return false;
   }
 }
+
+export async function updateFileContent(basePath: string, fileName: string, oldContent: string, newContent: string): Promise<boolean> {
+  const creds = getCredentials();
+  if (!creds) return false;
+
+  let filePath = '';
+  if (fileName === 'Chat.md') {
+    filePath = `${basePath}/Chat.md`;
+  } else if (fileName === 'Later.md') {
+    filePath = `${basePath}/Later.md`;
+  } else if (fileName.includes('journal') || fileName.match(/\d{4}\.\d{2}/)) {
+    filePath = `${basePath}/journal/${fileName}`;
+  } else {
+    filePath = `${basePath}/${fileName}`;
+  }
+
+  try {
+    const readResponse = await fetch(`${API_BASE_URL}/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
+    });
+
+    if (!readResponse.ok) return false;
+    const data = await readResponse.json();
+    const fileContent = data.content || '';
+
+    const updatedContent = fileContent.replace(oldContent, newContent);
+    if (updatedContent === fileContent) return false;
+
+    const writeResponse = await fetch(`${API_BASE_URL}/write`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: updatedContent }),
+    });
+
+    if (writeResponse.ok) {
+      localStorage.removeItem(LOCAL_CACHE_KEY);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}

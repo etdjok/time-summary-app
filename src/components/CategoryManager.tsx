@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
+import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Lock } from 'lucide-react';
+import { getStoredPassword, setStoredPassword } from '../lib/auth';
 import { useCategories } from '../hooks/useCategories';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -26,6 +27,12 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
   const [newIcon, setNewIcon] = useState('Star');
   const [newColor, setNewColor] = useState('bg-blue-500');
   const [newTarget, setNewTarget] = useState<'chat' | 'todo' | 'journal'>('chat');
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [pwdMsgType, setPwdMsgType] = useState<'success' | 'error'>('success');
 
   const handleAdd = () => {
     if (!newLabel.trim()) return;
@@ -36,6 +43,32 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
       target: newTarget,
     });
     setNewLabel('');
+  };
+
+  const handleChangePassword = () => {
+    setPwdMsg('');
+    if (currentPwd !== getStoredPassword()) {
+      setPwdMsg('当前密码错误');
+      setPwdMsgType('error');
+      return;
+    }
+    if (!newPwd.trim() || newPwd.length < 4) {
+      setPwdMsg('新密码至少4个字符');
+      setPwdMsgType('error');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdMsg('两次输入不一致');
+      setPwdMsgType('error');
+      return;
+    }
+    setStoredPassword(newPwd);
+    setPwdMsg('密码修改成功');
+    setPwdMsgType('success');
+    setCurrentPwd('');
+    setNewPwd('');
+    setConfirmPwd('');
+    setTimeout(() => { setShowPasswordChange(false); setPwdMsg(''); }, 2000);
   };
 
   return (
@@ -134,6 +167,55 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                 添加分类
               </button>
             </div>
+          </div>
+
+          {/* 修改密码 */}
+          <div className="border-t border-gray-100 pt-4">
+            <button
+              onClick={() => setShowPasswordChange(!showPasswordChange)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-colors font-medium text-sm"
+            >
+              <Lock className="w-4 h-4" />
+              {showPasswordChange ? '收起' : '修改密码'}
+            </button>
+
+            {showPasswordChange && (
+              <div className="mt-3 space-y-3">
+                <input
+                  type="password"
+                  value={currentPwd}
+                  onChange={(e) => setCurrentPwd(e.target.value)}
+                  placeholder="当前密码"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                />
+                <input
+                  type="password"
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  placeholder="新密码（至少4位）"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                />
+                <input
+                  type="password"
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  placeholder="确认新密码"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                  onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                />
+                {pwdMsg && (
+                  <p className={`text-xs text-center ${pwdMsgType === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+                    {pwdMsg}
+                  </p>
+                )}
+                <button
+                  onClick={handleChangePassword}
+                  className="w-full px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors font-medium text-sm"
+                >
+                  确认修改
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

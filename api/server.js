@@ -219,7 +219,12 @@ app.post('/api/nutstore/list', async (req, res) => {
 app.post('/api/nutstore/read', async (req, res) => {
   try {
     const { username, password, filePath } = req.body;
-    
+
+    if (!filePath) {
+      res.status(400).json({ error: '缺少文件路径' });
+      return;
+    }
+
     const encodedPath = encodePath(filePath);
     const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}${encodedPath}`, {
       username,
@@ -232,8 +237,18 @@ app.post('/api/nutstore/read', async (req, res) => {
       return;
     }
 
+    if (response.status === 401) {
+      res.status(401).json({ error: '坚果云账号或密码错误' });
+      return;
+    }
+
     if (!response.ok) {
-      res.status(response.status).json({ error: `读取失败 (${response.status})` });
+      const errText = await response.text().catch(() => '');
+      console.error(`读取失败: ${response.status} ${errText}`);
+      res.status(response.status).json({
+        error: `读取失败(${response.status})`,
+        detail: errText.slice(0, 200),
+      });
       return;
     }
 
@@ -245,16 +260,54 @@ app.post('/api/nutstore/read', async (req, res) => {
   }
 });
 
+
+
+// 创建目录
+app.post('/api/nutstore/mkdir', async (req, res) => {
+  try {
+    const { username, password, dirPath } = req.body;
+
+    if (!dirPath) {
+      res.status(400).json({ error: '缺少目录路径' });
+      return;
+    }
+
+    const encodedPath = encodePath(dirPath);
+    const response = await makeNutstoreRequest('https://dav.jianguoyun.com/dav' + encodedPath, {
+      username,
+      password,
+      method: 'MKCOL',
+    });
+
+    if (response.ok || response.status === 405) {
+      res.json({ success: true });
+    } else {
+      const errText = await response.text().catch(() => '');
+      res.status(response.status).json({
+        error: '创建目录失败(' + response.status + ')',
+        detail: errText.slice(0, 200),
+      });
+    }
+  } catch (error) {
+    console.error('创建目录失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 写入文件
 app.post('/api/nutstore/write', async (req, res) => {
   try {
     const { username, password, filePath, content } = req.body;
-    
-    if (!filePath || !content) {
-      res.status(400).json({ error: '缺少文件路径或内容' });
+
+    if (!filePath) {
+      res.status(400).json({ error: '缺少文件路径' });
       return;
     }
-    
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: '缺少文件内容' });
+      return;
+    }
+
     const encodedPath = encodePath(filePath);
     const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}${encodedPath}`, {
       username,
@@ -265,7 +318,12 @@ app.post('/api/nutstore/write', async (req, res) => {
     });
 
     if (!response.ok) {
-      res.status(response.status).json({ error: `写入失败 (${response.status})` });
+      const errText = await response.text().catch(() => '');
+      console.error(`写入失败: ${response.status} ${errText}`);
+      res.status(response.status).json({
+        error: `写入失败(${response.status})`,
+        detail: errText.slice(0, 200),
+      });
       return;
     }
 

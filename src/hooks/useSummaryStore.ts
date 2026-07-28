@@ -28,7 +28,7 @@ interface SummaryStore {
     byPriority: Record<string, number>;
     completed: number;
   };
-  updateEntry: (entry: MarkdownEntry, updates: Partial<MarkdownEntry>) => Promise<boolean>;
+  updateEntry: (entry: MarkdownEntry, updates: Partial<MarkdownEntry>) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
@@ -215,19 +215,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     };
   },
 
-  updateEntry: async (entry: MarkdownEntry, updates: Partial<MarkdownEntry>): Promise<boolean> => {
+  updateEntry: async (entry: MarkdownEntry, updates: Partial<MarkdownEntry>): Promise<{ success: boolean; error?: string }> => {
     const basePath = get().nutstoreBasePath;
-    
-    // Build the old line content
-    let oldLine = '';
-    if (entry.time) {
-      oldLine = `${entry.time} ${entry.content}`;
-    } else {
-      oldLine = entry.content;
-    }
-    if (entry.type === 'todo' && entry.completed !== undefined) {
-      oldLine = `- [${entry.completed ? 'x' : ' '}] ${oldLine}`;
-    }
+
+    const oldLine = entry.rawLine || entry.content;
 
     // Build the new line content
     const newContent = updates.content ?? entry.content;
@@ -243,16 +234,18 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       newLine = `- [${newCompleted ? 'x' : ' '}] ${newLine}`;
     }
 
-    const success = await updateFileContent(basePath, entry.sourceFile, oldLine, newLine);
-    
-    if (success) {
+    const result = await updateFileContent(basePath, entry.sourceFile, oldLine, newLine);
+
+    // 即使内容未变化，也要更新本地状态（元数据变更）
+    if (result.success || result.error === '内容未发生变化') {
       set((state) => ({
         entries: state.entries.map((e) =>
           e.id === entry.id ? { ...e, ...updates } : e
         ),
       }));
+      return { success: true };
     }
-    
-    return success;
+
+    return result;
   },
 }));

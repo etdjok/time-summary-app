@@ -238,6 +238,7 @@ export async function loadEntries(basePath: string): Promise<MarkdownEntry[]> {
   }
 }
 
+
 export async function appendToFile(basePath: string, content: string, type: 'chat' | 'todo' | 'journal'): Promise<boolean> {
   const creds = getCredentials();
   if (!creds) {
@@ -246,7 +247,7 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
 
   try {
     let filePath = '';
-    
+
     if (type === 'chat') {
       filePath = `${basePath}/Chat.md`;
     } else if (type === 'todo') {
@@ -285,15 +286,55 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
       return true;
     }
 
+    if (writeResponse.status === 409) {
+      const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+      const mkdirResponse = await fetch(`${API_BASE_URL}/mkdir`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: creds.username, password: creds.password, dirPath }),
+      });
+
+      if (mkdirResponse.ok || mkdirResponse.status === 405) {
+        const retryWriteResponse = await fetch(`${API_BASE_URL}/write`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: newContent }),
+        });
+
+        if (retryWriteResponse.ok) {
+          localStorage.removeItem(LOCAL_CACHE_KEY);
+          return true;
+        }
+      }
+    }
+
     return false;
   } catch {
     return false;
   }
 }
+export interface UpdateResult {
+  success: boolean;
+  error?: string;
+}
 
-export async function updateFileContent(basePath: string, fileName: string, oldContent: string, newContent: string): Promise<boolean> {
+export async function updateFileContent(
+  basePath: string,
+  fileName: string,
+  oldContent: string,
+  newContent: string
+): Promise<UpdateResult> {
+  if (!oldContent) {
+    return { success: false, error: '原始内容为空，无法定位待修改行' };
+  }
+  if (newContent === oldContent) {
+    return { success: false, error: '内容未发生变化' };
+  }
+
   const creds = getCredentials();
-  if (!creds) return false;
+  if (!creds) {
+    return { success: false, error: '未配置坚果云账号' };
+  }
 
   let filePath = '';
   if (fileName === 'Chat.md') {
@@ -313,25 +354,68 @@ export async function updateFileContent(basePath: string, fileName: string, oldC
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
     });
 
-    if (!readResponse.ok) return false;
+    if (!readResponse.ok) {
+      const errData = await readResponse.json().catch(() => ({}));
+      return {
+        success: false,
+        error: `读取文件失败(${readResponse.status}): ${errData.error || readResponse.statusText}`,
+      };
+    }
     const data = await readResponse.json();
-    const fileContent = data.content || '';
+    const fileContent: string = data.content || '';
 
-    const updatedContent = fileContent.replace(oldContent, newContent);
-    if (updatedContent === fileContent) return false;
+    // 逐行匹配：用 trim 后的内容匹配，但替换时用原始行
+    const lines = fileContent.split('\n');
+    const trimmedOld = oldContent.trim();
+    let matchedIndex = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === trimmedOld) {
+        matchedIndex = i;
+        break;
+      }
+    }
+
+    if (matchedIndex === -1) {
+      return {
+        success: false,
+        error: '原始行在文件中未找到（可能已被其他设备修改，请刷新后重试）',
+      };
+    }
+
+    // 用原始行进行替换（保留原始行的前后空格）
+    const originalLine = lines[matchedIndex];
+    const updatedContent = fileContent.replace(originalLine, () => newContent);
+
+    if (updatedContent === fileContent) {
+      return { success: false, error: '内容替换失败' };
+    }
 
     const writeResponse = await fetch(`${API_BASE_URL}/write`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: updatedContent }),
+      body: JSON.stringify({
+        username: creds.username,
+        password: creds.password,
+        filePath,
+        content: updatedContent,
+      }),
     });
 
     if (writeResponse.ok) {
       localStorage.removeItem(LOCAL_CACHE_KEY);
-      return true;
+      return { success: true };
     }
-    return false;
-  } catch {
-    return false;
+
+    const errData = await writeResponse.json().catch(() => ({}));
+    return {
+      success: false,
+      error: `写入失败(${writeResponse.status}): ${errData.error || writeResponse.statusText}`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `网络异常: ${error instanceof Error ? error.message : '未知错误'}`,
+    };
   }
 }

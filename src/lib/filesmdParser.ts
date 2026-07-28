@@ -1,4 +1,4 @@
-import { MarkdownEntry } from '../types';
+﻿import { MarkdownEntry } from '../types';
 
 const formatDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -77,6 +77,7 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(cleanContent),
+        rawLine: trimmed,
         type: isTodo ? 'todo' : 'chat',
         date: currentDate,
         time: currentTime || undefined,
@@ -130,6 +131,7 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(contentToParse),
+        rawLine: trimmed,
         type: 'journal',
         date: currentDate,
         time: currentTime || undefined,
@@ -168,6 +170,7 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(cleanContent),
+        rawLine: trimmed,
         type: 'todo',
         date: formatDate(new Date()),
         sourceFile: fileName,
@@ -195,6 +198,7 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(currentContent.join('\n')),
+        rawLine: currentContent.join('\n'),
         type: 'note',
         date: formatDate(new Date()),
         sourceFile: fileName,
@@ -214,6 +218,7 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
     entries.push({
       id: `${fileName}-${entries.length}`,
       content: stripMetadata(currentContent.join('\n')),
+      rawLine: currentContent.join('\n'),
       type: 'note',
       date: formatDate(new Date()),
       sourceFile: fileName,

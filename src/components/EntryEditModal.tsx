@@ -39,7 +39,7 @@ export function EntryEditModal({ entry, onClose }: EntryEditModalProps) {
     setError('');
 
     try {
-      const success = await updateEntry(entry, {
+      const result = await updateEntry(entry, {
         content: content.trim(),
         type,
         priority,
@@ -47,14 +47,14 @@ export function EntryEditModal({ entry, onClose }: EntryEditModalProps) {
         completed: type === 'todo' ? completed : undefined,
       });
 
-      if (success) {
+      if (result.success) {
         loadEntries();
         onClose();
       } else {
-        setError('保存失败，请检查网络连接');
+        setError(result.error || '保存失败，请稍后重试');
       }
-    } catch {
-      setError('保存出错');
+    } catch (err) {
+      setError(`保存出错: ${err instanceof Error ? err.message : '未知错误'}`);
     } finally {
       setIsSaving(false);
     }

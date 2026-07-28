@@ -1,4 +1,4 @@
-export type PeriodType = 'day' | 'week' | 'month' | 'quarter' | 'half-year' | 'year';
+﻿export type PeriodType = 'day' | 'week' | 'month' | 'quarter' | 'half-year' | 'year';
 
 export interface Period {
   id: string;
@@ -21,6 +21,7 @@ export interface MarkdownEntry {
   tags: string[];
   completed?: boolean;
   status?: EntryStatus;
+  rawLine?: string;
 }
 
 export const PERIOD_LABELS: Record<PeriodType, string> = {

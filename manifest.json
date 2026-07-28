@@ -1,7 +1,7 @@
 {
-  "name": "时间汇总",
-  "short_name": "时间汇总",
-  "description": "files.md 时间维度汇总工具 - 支持坚果云同步",
+  "name": "心光",
+  "short_name": "心光",
+  "description": "心光 - 你的时光记录与思考空间 - 支持坚果云同步",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fffbeb",

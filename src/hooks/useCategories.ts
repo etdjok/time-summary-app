@@ -7,15 +7,15 @@ export interface Category {
   label: string;
   icon: string;
   color: string;
-  target: 'chat' | 'todo' | 'journal';
+  target: 'chat' | 'todo' | 'journal' | 'idea' | 'note';
 }
 
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'chat', label: '收集', icon: 'MessageSquare', color: 'bg-blue-500', target: 'chat' },
   { id: 'todo', label: '待办', icon: 'CheckCircle', color: 'bg-amber-500', target: 'todo' },
-  { id: 'idea', label: '想法', icon: 'Lightbulb', color: 'bg-pink-500', target: 'chat' },
+  { id: 'idea', label: '想法', icon: 'Lightbulb', color: 'bg-pink-500', target: 'idea' },
   { id: 'journal', label: '日记', icon: 'BookOpen', color: 'bg-green-500', target: 'journal' },
-  { id: 'note', label: '笔记', icon: 'FileText', color: 'bg-purple-500', target: 'chat' },
+  { id: 'note', label: '笔记', icon: 'FileText', color: 'bg-purple-500', target: 'note' },
 ];
 
 const COLOR_OPTIONS = [
@@ -54,13 +54,24 @@ const TARGET_OPTIONS = [
   { label: '收集箱 (Chat.md)', value: 'chat' },
   { label: '待办 (Later.md)', value: 'todo' },
   { label: '日记 (journal)', value: 'journal' },
+  { label: '想法 (@idea)', value: 'idea' },
+  { label: '笔记 (@note)', value: 'note' },
 ];
 
 function loadCategories(): Category[] {
   try {
     const raw = localStorage.getItem(CATEGORIES_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      // Auto-migrate: fix old categories where idea/note had target 'chat'
+      const migrated = parsed.map((cat: Category) => {
+        if (cat.id === 'idea' && cat.target === 'chat') return { ...cat, target: 'idea' as const };
+        if (cat.id === 'note' && cat.target === 'chat') return { ...cat, target: 'note' as const };
+        return cat;
+      });
+      // Save migrated data back
+      localStorage.setItem(CATEGORIES_KEY, JSON.stringify(migrated));
+      return migrated;
     }
   } catch {
     // ignore

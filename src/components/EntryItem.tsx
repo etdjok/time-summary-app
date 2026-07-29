@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag } from 'lucide-react';
+import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Trash2 } from 'lucide-react';
 import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
 
 interface EntryItemProps {
   entry: MarkdownEntry;
   onEdit?: (entry: MarkdownEntry) => void;
+  onDelete?: (entry: MarkdownEntry) => void;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -38,7 +39,7 @@ const priorityLabels: Record<string, string> = {
   low: '次要',
 };
 
-export function EntryItem({ entry, onEdit }: EntryItemProps) {
+export function EntryItem({ entry, onEdit, onDelete }: EntryItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isCompleted = entry.type === 'todo' && entry.completed;
@@ -113,13 +114,22 @@ export function EntryItem({ entry, onEdit }: EntryItemProps) {
           </div>
 
           <div className="flex items-center justify-end mt-1 gap-1">
+            {onDelete && (
+              <button
+                onClick={() => { if (confirm('确定要删除这条记录吗？')) onDelete(entry); }}
+                className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                title="删除"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             {onEdit && (
               <button
                 onClick={() => onEdit(entry)}
                 className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
                 title="编辑"
               >
-                ✏️
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>
               </button>
             )}
             <button

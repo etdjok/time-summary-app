@@ -4,9 +4,10 @@ import { EntryItem } from './EntryItem';
 
 interface QuadrantViewProps {
   onEdit: (entry: MarkdownEntry) => void;
+  onDelete?: (entry: MarkdownEntry) => void;
 }
 
-export function QuadrantView({ onEdit }: QuadrantViewProps) {
+export function QuadrantView({ onEdit, onDelete }: QuadrantViewProps) {
   const { getPeriodEntries } = useSummaryStore();
   const entries = getPeriodEntries();
 
@@ -40,6 +41,7 @@ export function QuadrantView({ onEdit }: QuadrantViewProps) {
               key={`${entry.id}-${index}`}
               className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
               onClick={() => onEdit(entry)}
+              onDoubleClick={() => { if (onDelete && confirm('确定删除？')) onDelete(entry); }}
             >
               <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
                 entry.type === 'todo' ? 'bg-amber-100 text-amber-700' :

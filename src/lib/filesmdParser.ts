@@ -41,6 +41,24 @@ function stripMetadata(content: string): string {
     .trim();
 }
 
+function extractType(content: string): 'chat' | 'todo' | 'journal' | 'idea' | 'note' {
+  if (content.includes('@idea') || content.includes('@想法')) return 'idea';
+  if (content.includes('@note') || content.includes('@笔记')) return 'note';
+  if (content.includes('@journal') || content.includes('@日记')) return 'journal';
+  return 'chat';
+}
+
+function stripTypeMarker(content: string): string {
+  return content
+    .replace(/\s*@idea\b/g, '')
+    .replace(/\s*@想法\b/g, '')
+    .replace(/\s*@note\b/g, '')
+    .replace(/\s*@笔记\b/g, '')
+    .replace(/\s*@journal\b/g, '')
+    .replace(/\s*@日记\b/g, '')
+    .trim();
+}
+
 export function parseChatMd(content: string, fileName: string = 'Chat.md'): MarkdownEntry[] {
   const entries: MarkdownEntry[] = [];
   const lines = content.split('\n');
@@ -74,11 +92,14 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         cleanContent = contentToParse.replace(/^[-*]\s*\[[x ]\]\s*/, '');
       }
       
+      const entryType = isTodo ? 'todo' : extractType(cleanContent);
+      const displayContent = isTodo ? stripMetadata(cleanContent) : stripMetadata(stripTypeMarker(cleanContent));
+      
       entries.push({
         id: `${fileName}-${entries.length}`,
-        content: stripMetadata(cleanContent),
+        content: displayContent,
         rawLine: trimmed,
-        type: isTodo ? 'todo' : 'chat',
+        type: entryType,
         date: currentDate,
         time: currentTime || undefined,
         sourceFile: fileName,

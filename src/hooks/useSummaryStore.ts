@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { MarkdownEntry, Period, PeriodType } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
-import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, updateFileContent } from '../lib/nutstore';
+import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, updateFileContent, deleteFileContent } from '../lib/nutstore';
 
 interface SummaryStore {
   entries: MarkdownEntry[];
@@ -29,6 +29,7 @@ interface SummaryStore {
     completed: number;
   };
   updateEntry: (entry: MarkdownEntry, updates: Partial<MarkdownEntry>) => Promise<{ success: boolean; error?: string }>;
+  deleteEntry: (entry: MarkdownEntry) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
@@ -134,7 +135,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     set({ nutstoreBasePath: path });
   },
 
-  addEntry: async (content: string, target: 'chat' | 'todo' | 'journal'): Promise<boolean> => {
+  addEntry: async (content: string, target: 'chat' | 'todo' | 'journal' | 'idea' | 'note'): Promise<boolean> => {
     const basePath = get().nutstoreBasePath;
     let success = false;
 
@@ -145,6 +146,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
 
     if (target === 'todo') {
       formattedContent = `- [ ] ${formattedContent}`;
+    } else if (target === 'idea') {
+      formattedContent = `${formattedContent} @idea`;
+    } else if (target === 'note') {
+      formattedContent = `${formattedContent} @note`;
     }
 
     switch (target) {
@@ -154,6 +159,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       case 'journal':
         success = await appendToJournalMd(basePath, formattedContent);
         break;
+      case 'idea':
+      case 'note':
       case 'chat':
       default:
         success = await appendToChatMd(basePath, formattedContent);
@@ -217,13 +224,15 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
 
   updateEntry: async (entry: MarkdownEntry, updates: Partial<MarkdownEntry>): Promise<{ success: boolean; error?: string }> => {
     const basePath = get().nutstoreBasePath;
+    const { addEntry, deleteEntry } = get();
 
     const oldLine = entry.rawLine || entry.content;
-
-    // Build the new line content
     const newContent = updates.content ?? entry.content;
     const newType = updates.type ?? entry.type;
     const newCompleted = updates.completed ?? entry.completed;
+    const typeChanged = newType !== entry.type;
+
+    // Build the new line content
     let newLine = '';
     if (entry.time) {
       newLine = `${entry.time} ${newContent}`;
@@ -234,9 +243,31 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       newLine = `- [${newCompleted ? 'x' : ' '}] ${newLine}`;
     }
 
+    // If type changed, we need to move the entry to a different file
+    if (typeChanged) {
+      // First add to the new file
+      const target = newType === 'todo' ? 'todo' : newType === 'journal' ? 'journal' : 'chat';
+      const addSuccess = await addEntry(newContent, target as any);
+      if (!addSuccess) {
+        return { success: false, error: '添加到新分类失败' };
+      }
+      // Then delete from the old file
+      const delResult = await deleteEntry(entry);
+      if (!delResult.success) {
+        return { success: false, error: '从原分类删除失败: ' + (delResult.error || '') };
+      }
+      // Update local state
+      set((state) => ({
+        entries: state.entries.map((e) =>
+          e.id === entry.id ? { ...e, ...updates } : e
+        ),
+      }));
+      return { success: true };
+    }
+
+    // Same type - just update content in the same file
     const result = await updateFileContent(basePath, entry.sourceFile, oldLine, newLine);
 
-    // 即使内容未变化，也要更新本地状态（元数据变更）
     if (result.success || result.error === '内容未发生变化') {
       set((state) => ({
         entries: state.entries.map((e) =>
@@ -246,6 +277,18 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       return { success: true };
     }
 
+    return result;
+  },
+
+  deleteEntry: async (entry: MarkdownEntry): Promise<{ success: boolean; error?: string }> => {
+    const basePath = get().nutstoreBasePath;
+    const oldLine = entry.rawLine || entry.content;
+    const result = await deleteFileContent(basePath, entry.sourceFile, oldLine);
+    if (result.success) {
+      set((state) => ({
+        entries: state.entries.filter((e) => e.id !== entry.id),
+      }));
+    }
     return result;
   },
 }));

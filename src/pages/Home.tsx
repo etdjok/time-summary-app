@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, List, Target, BarChart3 } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, List, Target, BarChart3, Download, Upload, Trash2 } from 'lucide-react';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
 import { SummaryList } from '../components/SummaryList';
@@ -11,6 +11,7 @@ import { Changelog } from '../components/Changelog';
 import { QuadrantView } from '../components/QuadrantView';
 import { HeatmapView } from '../components/HeatmapView';
 import { EntryEditModal } from '../components/EntryEditModal';
+import { ImportExportModal } from '../components/ImportExportModal';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { MarkdownEntry } from '../types';
 import { hasCredentials } from '../lib/nutstore';
@@ -25,6 +26,8 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingEntry, setEditingEntry] = useState<MarkdownEntry | null>(null);
+  const [showImportExport, setShowImportExport] = useState(false);
+  const [statsTypeFilter, setStatsTypeFilter] = useState<string>('all');
   const { loadEntries } = useSummaryStore();
 
   useEffect(() => {
@@ -35,6 +38,22 @@ export default function Home() {
       loadEntries();
     }
   }, [loadEntries]);
+
+
+  const handleDelete = async (entry: MarkdownEntry) => {
+    if (!confirm('确定要删除这条记录吗？')) return;
+    const { deleteEntry, loadEntries } = useSummaryStore.getState();
+    const result = await deleteEntry(entry);
+    if (result.success) {
+      loadEntries();
+    } else {
+      alert(result.error || '删除失败');
+    }
+  };
+
+  const handleStatsTypeClick = (type: string) => {
+    setStatsTypeFilter((prev) => (prev === type ? 'all' : type));
+  };
 
   const handleSelectDate = (date: string) => {
     // Could navigate to that date in the future
@@ -47,9 +66,17 @@ export default function Home() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.3 · 你的时光记录与思考空间</p>
+            <p className="text-sm text-gray-500 mt-0.5">v1.10 · 你的时光记录与思考空间</p>
           </div>
           <div className="flex items-center gap-1.5">
+
+            <button
+              onClick={() => setShowImportExport(true)}
+              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
+              title="导入导出"
+            >
+              <Download className="w-5 h-5" />
+            </button>
             <button
               onClick={() => setShowHelp(true)}
               className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
@@ -169,13 +196,13 @@ export default function Home() {
 
         {viewMode === 'list' && (
           <>
-            <StatsCard />
-            <SummaryList onEdit={setEditingEntry} />
+            <StatsCard onTypeClick={handleStatsTypeClick} activeType={statsTypeFilter === 'all' ? undefined : statsTypeFilter} />
+            <SummaryList onEdit={setEditingEntry} onDelete={handleDelete} initialTypeFilter={statsTypeFilter} onTypeFilterChange={setStatsTypeFilter} />
           </>
         )}
 
         {viewMode === 'quadrant' && (
-          <QuadrantView onEdit={setEditingEntry} />
+          <QuadrantView onEdit={setEditingEntry} onDelete={handleDelete} />
         )}
 
         {viewMode === 'heatmap' && (
@@ -208,6 +235,11 @@ export default function Home() {
 
       {showChangelog && (
         <Changelog onClose={() => setShowChangelog(false)} />
+      )}
+
+
+      {showImportExport && (
+        <ImportExportModal onClose={() => setShowImportExport(false)} />
       )}
 
       {editingEntry && (

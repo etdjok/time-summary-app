@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { List, Filter, RefreshCw, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { List, Filter, RefreshCw, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText, Search, Trash2 } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { EntryItem } from './EntryItem';
 import { FILE_TYPE_LABELS, MarkdownEntry } from '../types';
@@ -15,17 +15,34 @@ const typeFilters = [
 
 interface SummaryListProps {
   onEdit?: (entry: MarkdownEntry) => void;
+  onDelete?: (entry: MarkdownEntry) => void;
+  initialTypeFilter?: string;
+  onTypeFilterChange?: (type: string) => void;
 }
 
-export function SummaryList({ onEdit }: SummaryListProps) {
+export function SummaryList({ onEdit, onDelete, initialTypeFilter, onTypeFilterChange }: SummaryListProps) {
   const { getPeriodEntries, loadEntries, loading } = useSummaryStore();
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter || 'all');
+  const [searchQuery, setSearchQuery] = useState('');
   
+  // Sync with StatsCard filter
+  useEffect(() => {
+    if (initialTypeFilter) {
+      setTypeFilter(initialTypeFilter);
+    }
+  }, [initialTypeFilter]);
+
   const entries = getPeriodEntries();
   
-  const filteredEntries = typeFilter === 'all' 
-    ? entries 
-    : entries.filter(e => e.type === typeFilter);
+  const filteredEntries = entries
+    .filter(e => typeFilter === 'all' || e.type === typeFilter)
+    .filter(e => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return e.content.toLowerCase().includes(q) ||
+             e.tags.some(t => t.toLowerCase().includes(q)) ||
+             e.date.includes(q);
+    });
 
   return (
     <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4">
@@ -49,7 +66,7 @@ export function SummaryList({ onEdit }: SummaryListProps) {
         {typeFilters.map((filter) => (
           <button
             key={filter.value}
-            onClick={() => setTypeFilter(filter.value)}
+            onClick={() => { setTypeFilter(filter.value); onTypeFilterChange?.(filter.value); }}
             className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-all ${
               typeFilter === filter.value
                 ? 'bg-amber-500 text-white'
@@ -60,6 +77,27 @@ export function SummaryList({ onEdit }: SummaryListProps) {
             {filter.label}
           </button>
         ))}
+      </div>
+
+
+      {/* 搜索框 */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="搜索内容、标签、日期..."
+          className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400 transition-colors"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            x
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -78,7 +116,7 @@ export function SummaryList({ onEdit }: SummaryListProps) {
       ) : (
         <div className="max-h-[60vh] overflow-y-auto -mx-2 px-2">
           {filteredEntries.map((entry, index) => (
-            <EntryItem key={`${entry.id}-${index}`} entry={entry} onEdit={onEdit} />
+            <EntryItem key={`${entry.id}-${index}`} entry={entry} onEdit={onEdit} onDelete={onDelete} />
           ))}
         </div>
       )}

@@ -18,11 +18,16 @@ const typeColors: Record<string, string> = {
   note: 'bg-purple-100 text-purple-700',
 };
 
-export function StatsCard() {
+const allTypes = ['chat', 'journal', 'todo', 'idea', 'note'];
+
+interface StatsCardProps {
+  onTypeClick?: (type: string) => void;
+  activeType?: string;
+}
+
+export function StatsCard({ onTypeClick, activeType }: StatsCardProps) {
   const { getStats } = useSummaryStore();
   const stats = getStats();
-
-  const typeEntries = Object.entries(stats.byType).filter(([, count]) => count > 0);
 
   return (
     <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 mb-4">
@@ -42,22 +47,32 @@ export function StatsCard() {
         </div>
       </div>
 
-      {typeEntries.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-gray-500">按类型分布</p>
-          {typeEntries.map(([type, count]) => (
-            <div key={type} className="flex items-center gap-2">
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-gray-500">按类型分布</p>
+        {allTypes.map((type) => {
+          const count = stats.byType[type] || 0;
+          const isActive = activeType === type;
+          return (
+            <div
+              key={type}
+              onClick={() => onTypeClick && onTypeClick(type)}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all ${
+                isActive
+                  ? 'bg-amber-100 ring-2 ring-amber-400'
+                  : 'hover:bg-gray-50'
+              }`}
+            >
               <div className={`w-6 h-6 rounded-full flex items-center justify-center ${typeColors[type] || 'bg-gray-100 text-gray-600'}`}>
                 {typeIcons[type]}
               </div>
               <span className="text-sm text-gray-700 flex-1">
                 {FILE_TYPE_LABELS[type] || type}
               </span>
-              <span className="text-sm font-medium text-gray-900">{count}</span>
+              <span className={`text-sm font-medium ${count > 0 ? 'text-gray-900' : 'text-gray-300'}`}>{count}</span>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }

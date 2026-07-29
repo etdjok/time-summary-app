@@ -364,15 +364,50 @@ export async function updateFileContent(
     const data = await readResponse.json();
     const fileContent: string = data.content || '';
 
-    // 逐行匹配：用 trim 后的内容匹配，但替换时用原始行
+    // 多级匹配策略：精确匹配 -> trim匹配 -> 包含匹配 -> 内容匹配
     const lines = fileContent.split('\n');
     const trimmedOld = oldContent.trim();
     let matchedIndex = -1;
 
+    // 第1级：精确匹配
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === trimmedOld) {
+      if (lines[i] === oldContent) {
         matchedIndex = i;
         break;
+      }
+    }
+
+    // 第2级：trim后精确匹配
+    if (matchedIndex === -1) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === trimmedOld) {
+          matchedIndex = i;
+          break;
+        }
+      }
+    }
+
+    // 第3级：包含关系匹配（行内容包含oldContent或oldContent包含行内容）
+    if (matchedIndex === -1 && trimmedOld.length > 2) {
+      for (let i = 0; i < lines.length; i++) {
+        const lineTrimmed = lines[i].trim();
+        if (lineTrimmed.includes(trimmedOld) || trimmedOld.includes(lineTrimmed)) {
+          matchedIndex = i;
+          break;
+        }
+      }
+    }
+
+    // 第4级：用 entry.content 匹配（去掉时间戳等前缀）
+    if (matchedIndex === -1) {
+      const contentOnly = oldContent.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '').trim();
+      if (contentOnly && contentOnly !== trimmedOld) {
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].trim() === contentOnly || lines[i].trim().includes(contentOnly)) {
+            matchedIndex = i;
+            break;
+          }
+        }
       }
     }
 
@@ -417,5 +452,98 @@ export async function updateFileContent(
       success: false,
       error: `网络异常: ${error instanceof Error ? error.message : '未知错误'}`,
     };
+  }
+}
+
+
+export async function deleteFileContent(
+  basePath: string,
+  fileName: string,
+  content: string
+): Promise<UpdateResult> {
+  if (!content) {
+    return { success: false, error: '删除内容为空' };
+  }
+
+  const creds = getCredentials();
+  if (!creds) {
+    return { success: false, error: '未配置坚果云账号' };
+  }
+
+  let filePath = '';
+  if (fileName === 'Chat.md') {
+    filePath = basePath + '/Chat.md';
+  } else if (fileName === 'Later.md') {
+    filePath = basePath + '/Later.md';
+  } else if (fileName.includes('journal') || fileName.match(/\d{4}\.\d{2}/)) {
+    filePath = basePath + '/journal/' + fileName;
+  } else {
+    filePath = basePath + '/' + fileName;
+  }
+
+  try {
+    const readResponse = await fetch(API_BASE_URL + '/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
+    });
+
+    if (!readResponse.ok) {
+      return { success: false, error: '读取文件失败，无法删除' };
+    }
+    const data = await readResponse.json();
+    const fileContent = data.content || '';
+
+    const lines = fileContent.split('\n');
+    const trimmedContent = content.trim();
+    let matchedIndex = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] === content) { matchedIndex = i; break; }
+    }
+    if (matchedIndex === -1) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === trimmedContent) { matchedIndex = i; break; }
+      }
+    }
+    if (matchedIndex === -1 && trimmedContent.length > 2) {
+      for (let i = 0; i < lines.length; i++) {
+        const lt = lines[i].trim();
+        if (lt.includes(trimmedContent) || trimmedContent.includes(lt)) { matchedIndex = i; break; }
+      }
+    }
+    if (matchedIndex === -1) {
+      const contentOnly = content.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '').trim();
+      if (contentOnly && contentOnly !== trimmedContent) {
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].trim() === contentOnly || lines[i].trim().includes(contentOnly)) { matchedIndex = i; break; }
+        }
+      }
+    }
+
+    if (matchedIndex === -1) {
+      return { success: false, error: '未找到要删除的内容（可能已被其他设备修改）' };
+    }
+
+    lines.splice(matchedIndex, 1);
+    while (matchedIndex > 0 && lines[matchedIndex - 1].trim() === '' && lines[matchedIndex] && lines[matchedIndex].trim() === '') {
+      lines.splice(matchedIndex - 1, 1);
+      matchedIndex--;
+    }
+    const updatedContent = lines.join('\n');
+
+    const writeResponse = await fetch(API_BASE_URL + '/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: updatedContent }),
+    });
+
+    if (writeResponse.ok) {
+      localStorage.removeItem(LOCAL_CACHE_KEY);
+      return { success: true };
+    }
+    return { success: false, error: '写入失败，删除未生效' };
+  } catch (error) {
+    return { success: false, error: '网络异常: ' + (error instanceof Error ? error.message : '未知错误') };
   }
 }

@@ -294,7 +294,26 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
       return false;
     }
 
-    const newContent = existingContent.trimEnd() + '\n' + content;
+    // 自动添加日期头 ## YYYY-MM-DD（如果文件中不存在今天的日期头）
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const dateHeader = `## ${dateStr}`;
+    
+    let contentToAdd = content;
+    if (type === 'chat' || type === 'todo') {
+      // 检查文件中是否已有今天的日期头
+      if (!existingContent.includes(dateHeader)) {
+        contentToAdd = `${dateHeader}\n${content}`;
+      }
+    } else if (type === 'journal') {
+      // 日记文件使用 ### DD日 格式
+      const dayHeader = `### ${now.getDate()}日`;
+      if (!existingContent.includes(dayHeader)) {
+        contentToAdd = `${dayHeader}\n${content}`;
+      }
+    }
+
+    const newContent = existingContent.trimEnd() + '\n' + contentToAdd;
 
     const writeResponse = await fetch(`${API_BASE_URL}/write`, {
       method: 'POST',

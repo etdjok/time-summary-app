@@ -1,4 +1,4 @@
-﻿import { MarkdownEntry } from '../types';
+import { MarkdownEntry } from '../types';
 
 const formatDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -18,7 +18,6 @@ function extractTags(content: string): string[] {
   const tags: string[] = [];
   let match;
   while ((match = tagRegex.exec(content)) !== null) {
-    // 排除 @cat:xxx 和 @type 这样的元数据标记
     if (!match[1].startsWith('cat:')) {
       tags.push(match[1]);
     }
@@ -54,20 +53,36 @@ function stripMetadata(content: string): string {
     .trim();
 }
 
+// 尝试从内容中提取完整日期 YYYY-MM-DD
+function extractDateFromContent(content: string): string | null {
+  // 匹配 YYYY-MM-DD 或 YYYY/MM/DD 或 YYYY.MM.DD
+  const match = content.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  }
+  return null;
+}
+
 export function parseChatMd(content: string, fileName: string = 'Chat.md'): MarkdownEntry[] {
   const entries: MarkdownEntry[] = [];
   const lines = content.split('\n');
   
-  let currentDate = formatDate(new Date());
+  let currentDate = '';
   let currentTime = '';
   
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     
+    // 匹配 ## YYYY-MM-DD 日期头
     const dateMatch = trimmed.match(/^##\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/);
     if (dateMatch) {
       currentDate = dateMatch[1].replace(/\./g, '-').replace(/\//g, '-');
+      // 补齐月日为两位
+      const parts = currentDate.split('-');
+      if (parts.length === 3) {
+        currentDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
       continue;
     }
     
@@ -87,10 +102,8 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         cleanContent = contentToParse.replace(/^[-*]\s*\[[x ]\]\s*/, '');
       }
 
-      // 提取分类标记
       const categoryId = extractCategoryId(cleanContent);
       
-      // 确定最终类型：如果有 @cat:xxx 标记，使用它作为类型
       let entryType: string;
       if (categoryId) {
         entryType = categoryId;
@@ -98,12 +111,18 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         entryType = isTodo ? 'todo' : 'chat';
       }
       
+      // 确定日期：优先用日期头，其次从内容提取，最后为空
+      let entryDate = currentDate;
+      if (!entryDate) {
+        entryDate = extractDateFromContent(cleanContent) || '';
+      }
+      
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(cleanContent),
         type: entryType,
         categoryId: categoryId || undefined,
-        date: currentDate,
+        date: entryDate,
         time: currentTime || undefined,
         sourceFile: fileName,
         priority: extractPriority(contentToParse),
@@ -120,7 +139,7 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
   const entries: MarkdownEntry[] = [];
   const lines = content.split('\n');
   
-  let currentDate = formatDate(new Date());
+  let currentDate = '';
   const monthMatch = fileName.match(/(\d{4})[.](\d{2})/);
   if (monthMatch) {
     currentDate = `${monthMatch[1]}-${monthMatch[2]}-01`;
@@ -135,6 +154,10 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
     const dateMatch = trimmed.match(/^##\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/);
     if (dateMatch) {
       currentDate = dateMatch[1].replace(/\./g, '-').replace(/\//g, '-');
+      const parts = currentDate.split('-');
+      if (parts.length === 3) {
+        currentDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
       continue;
     }
     
@@ -152,10 +175,7 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
     const contentToParse = timeMatch ? trimmed.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '') : trimmed;
     
     if (contentToParse && !contentToParse.startsWith('#') && contentToParse.length > 0) {
-      // 提取分类标记
       const categoryId = extractCategoryId(contentToParse);
-      
-      // 如果有 @cat:xxx 标记，使用它作为类型
       const entryType = categoryId || 'journal';
       
       entries.push({
@@ -179,9 +199,22 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
   const entries: MarkdownEntry[] = [];
   const lines = content.split('\n');
   
+  let currentDate = '';
+  
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    
+    // 匹配 ## YYYY-MM-DD 日期头
+    const dateMatch = trimmed.match(/^##\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/);
+    if (dateMatch) {
+      currentDate = dateMatch[1].replace(/\./g, '-').replace(/\//g, '-');
+      const parts = currentDate.split('-');
+      if (parts.length === 3) {
+        currentDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+      continue;
+    }
     
     const isTodo = trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]') || 
                    trimmed.startsWith('* [ ]') || trimmed.startsWith('* [x]') ||
@@ -197,18 +230,30 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
       .replace(/^\d+\.\s*/, '');
     
     if (cleanContent && cleanContent.length > 0) {
-      // 提取分类标记
       const categoryId = extractCategoryId(cleanContent);
-      
-      // 如果有 @cat:xxx 标记，使用它作为类型
       const entryType = categoryId || 'todo';
+      
+      // 确定日期：优先用日期头，其次从内容提取
+      let entryDate = currentDate;
+      if (!entryDate) {
+        entryDate = extractDateFromContent(cleanContent) || '';
+      }
+      
+      // 提取时间（如果有）
+      const timeMatch = cleanContent.match(/^(\d{1,2}:\d{2})\s*/);
+      let entryTime = '';
+      if (timeMatch) {
+        entryTime = timeMatch[1];
+        cleanContent = cleanContent.replace(/^\d{1,2}:\d{2}\s*/, '');
+      }
       
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(cleanContent),
         type: entryType,
         categoryId: categoryId || undefined,
-        date: formatDate(new Date()),
+        date: entryDate,
+        time: entryTime || undefined,
         sourceFile: fileName,
         priority: extractPriority(trimmed),
         tags: extractTags(trimmed),
@@ -224,11 +269,39 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
   const entries: MarkdownEntry[] = [];
   const lines = content.split('\n');
   
-  let currentTitle = '';
+  let currentDate = '';
   let currentContent: string[] = [];
   
   for (const line of lines) {
     const trimmed = line.trim();
+    
+    // 匹配 ## YYYY-MM-DD 日期头
+    const dateMatch = trimmed.match(/^##\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/);
+    if (dateMatch) {
+      // 如果有积累的内容，先保存
+      if (currentContent.length > 0) {
+        const contentStr = currentContent.join('\n');
+        const categoryId = extractCategoryId(contentStr);
+        
+        entries.push({
+          id: `${fileName}-${entries.length}`,
+          content: stripMetadata(contentStr),
+          type: categoryId || 'note',
+          categoryId: categoryId || undefined,
+          date: currentDate,
+          sourceFile: fileName,
+          priority: 'medium' as const,
+          tags: extractTags(contentStr),
+        });
+        currentContent = [];
+      }
+      currentDate = dateMatch[1].replace(/\./g, '-').replace(/\//g, '-');
+      const parts = currentDate.split('-');
+      if (parts.length === 3) {
+        currentDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+      continue;
+    }
     
     if (trimmed.match(/^#+\s+/) && currentContent.length > 0) {
       const contentStr = currentContent.join('\n');
@@ -239,13 +312,12 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
         content: stripMetadata(contentStr),
         type: categoryId || 'note',
         categoryId: categoryId || undefined,
-        date: formatDate(new Date()),
+        date: currentDate,
         sourceFile: fileName,
         priority: 'medium' as const,
         tags: extractTags(contentStr),
       });
       currentContent = [];
-      currentTitle = trimmed.replace(/^#+\s+/, '');
     }
     
     if (trimmed) {
@@ -262,7 +334,7 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
       content: stripMetadata(contentStr),
       type: categoryId || 'note',
       categoryId: categoryId || undefined,
-      date: formatDate(new Date()),
+      date: currentDate,
       sourceFile: fileName,
       priority: 'medium' as const,
       tags: extractTags(contentStr),

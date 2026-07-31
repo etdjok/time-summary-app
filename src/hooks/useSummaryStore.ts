@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { MarkdownEntry, Period, PeriodType } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
 import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, deleteFile, readFile, writeFile } from '../lib/nutstore';
@@ -300,14 +300,18 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const end = new Date(currentPeriod.endDate);
     end.setHours(23, 59, 59, 999);
     
+    const today = new Date().toISOString().split('T')[0];
+    
     return entries
       .filter((entry) => {
-        const entryDate = new Date(entry.date);
+        // 对于没有日期的条目（历史数据），默认归到今天
+        const dateStr = entry.date || today;
+        const entryDate = new Date(dateStr);
         return entryDate >= start && entryDate <= end;
       })
       .sort((a, b) => {
-        const dateA = new Date(`${a.date} ${a.time || '00:00'}`);
-        const dateB = new Date(`${b.date} ${b.time || '00:00'}`);
+        const dateA = new Date(`${a.date || today} ${a.time || '00:00'}`);
+        const dateB = new Date(`${b.date || today} ${b.time || '00:00'}`);
         return dateB.getTime() - dateA.getTime();
       });
   },

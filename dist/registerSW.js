@@ -7,8 +7,8 @@ if('serviceWorker' in navigator) {
       caches.keys().then(keys => {
         keys.forEach(key => caches.delete(key));
       });
-      navigator.serviceWorker.register('./sw.js?v=12').then(() => {
-        console.log('Service Worker v1.12 registered');
+      navigator.serviceWorker.register('./sw.js?v=12b').then(() => {
+        console.log('Service Worker v1.12b registered');
       });
     });
   });

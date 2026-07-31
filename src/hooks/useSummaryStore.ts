@@ -1,7 +1,7 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { MarkdownEntry, Period, PeriodType } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
-import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd } from '../lib/nutstore';
+import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, deleteFile, readFile, writeFile } from '../lib/nutstore';
 
 interface SummaryStore {
   entries: MarkdownEntry[];
@@ -19,7 +19,10 @@ interface SummaryStore {
   
   loadEntries: () => Promise<void>;
   setNutstoreBasePath: (path: string) => void;
-  addEntry: (content: string, type: string) => Promise<boolean>;
+  addEntry: (content: string, type: string, categoryId?: string) => Promise<boolean>;
+  updateEntry: (entryId: string, updates: Partial<MarkdownEntry>) => Promise<boolean>;
+  deleteEntry: (entryId: string) => Promise<boolean>;
+  editEntry: (entryId: string, newContent: string) => Promise<boolean>;
   
   getPeriodEntries: () => MarkdownEntry[];
   getStats: () => { 
@@ -133,14 +136,16 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     set({ nutstoreBasePath: path });
   },
 
-  addEntry: async (content: string, target: 'chat' | 'todo' | 'journal'): Promise<boolean> => {
+  addEntry: async (content: string, target: 'chat' | 'todo' | 'journal', categoryId?: string): Promise<boolean> => {
     const basePath = get().nutstoreBasePath;
     let success = false;
 
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    let formattedContent = `${timeStr} ${content}`;
+    // 只要提供了 categoryId，就在内容中嵌入 @cat:xxx 标记，确保解析时能还原分类
+    const catMarker = categoryId ? `@cat:${categoryId} ` : '';
+    let formattedContent = `${timeStr} ${catMarker}${content}`;
 
     if (target === 'todo') {
       formattedContent = `- [ ] ${formattedContent}`;
@@ -160,6 +165,133 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     }
 
     return success;
+  },
+
+  updateEntry: async (entryId: string, updates: Partial<MarkdownEntry>): Promise<boolean> => {
+    const { entries, nutstoreBasePath } = get();
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry) return false;
+
+    const sourceFile = entry.sourceFile;
+    const filePath = sourceFile.startsWith('/') 
+      ? `${nutstoreBasePath}/${sourceFile}` 
+      : `${nutstoreBasePath}/${sourceFile}`;
+
+    // 读取原文件内容
+    const readResult = await readFile(filePath);
+    if (!readResult.success || !readResult.content) return false;
+
+    // 确定最终分类标记：优先使用显式更新的 type，否则保留原 categoryId/type
+    const displayType = updates.type || entry.categoryId || entry.type;
+    const categoryMarker = displayType ? `@cat:${displayType} ` : '';
+
+    const lines = readResult.content.split('\n');
+    const updatedLines: string[] = [];
+    
+    for (const line of lines) {
+      // 匹配当前条目（通过时间和内容匹配）
+      const timeMatch = line.match(/^(\d{2}:\d{2})\s+(.+)$/);
+      const todoMatch = line.match(/^- \[([ x])\]\s+(\d{2}:\d{2})\s+(.+)$/);
+      
+      let isTargetLine = false;
+      let newLine = line;
+      
+      if (todoMatch) {
+        const [, check, time, content] = todoMatch;
+        if (time === entry.time && content.includes(entry.content.substring(0, 20))) {
+          isTargetLine = true;
+          const newContent = updates.content || entry.content;
+          const newPriority = updates.priority || entry.priority;
+          const completed = updates.completed ?? entry.completed;
+          const checkMark = completed ? 'x' : ' ';
+          newLine = `- [${checkMark}] ${time} ${categoryMarker}${newContent} #${newPriority}`;
+        }
+      } else if (timeMatch) {
+        const [, time, content] = timeMatch;
+        if (time === entry.time && content.includes(entry.content.substring(0, 20))) {
+          isTargetLine = true;
+          const newContent = updates.content || entry.content;
+          const newPriority = updates.priority || entry.priority;
+          newLine = `${time} ${categoryMarker}${newContent} #${newPriority}`;
+        }
+      }
+      
+      updatedLines.push(newLine);
+    }
+
+    const newContent = updatedLines.join('\n');
+    const writeResult = await writeFile(filePath, newContent);
+    
+    if (writeResult.success) {
+      // 更新本地状态（同步 categoryId，确保后续渲染使用正确的分类）
+      set({
+        entries: entries.map(e => 
+          e.id === entryId ? { ...e, ...updates, categoryId: displayType } : e
+        )
+      });
+      return true;
+    }
+    
+    return false;
+  },
+
+  deleteEntry: async (entryId: string): Promise<boolean> => {
+    const { entries, nutstoreBasePath } = get();
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry) return false;
+
+    const sourceFile = entry.sourceFile;
+    const filePath = sourceFile.startsWith('/') 
+      ? `${nutstoreBasePath}/${sourceFile}` 
+      : `${nutstoreBasePath}/${sourceFile}`;
+
+    // 读取原文件内容
+    const readResult = await readFile(filePath);
+    if (!readResult.success || !readResult.content) return false;
+
+    const lines = readResult.content.split('\n');
+    const updatedLines: string[] = [];
+    
+    for (const line of lines) {
+      // 匹配当前条目（通过时间和内容匹配）
+      const timeMatch = line.match(/^(\d{2}:\d{2})\s+(.+)$/);
+      const todoMatch = line.match(/^- \[([ x])\]\s+(\d{2}:\d{2})\s+(.+)$/);
+      
+      let isTargetLine = false;
+      
+      if (todoMatch) {
+        const [, , time, content] = todoMatch;
+        if (time === entry.time && content.includes(entry.content.substring(0, 20))) {
+          isTargetLine = true;
+        }
+      } else if (timeMatch) {
+        const [, time, content] = timeMatch;
+        if (time === entry.time && content.includes(entry.content.substring(0, 20))) {
+          isTargetLine = true;
+        }
+      }
+      
+      if (!isTargetLine && line.trim()) {
+        updatedLines.push(line);
+      }
+    }
+
+    const newContent = updatedLines.join('\n');
+    const writeResult = await writeFile(filePath, newContent);
+    
+    if (writeResult.success) {
+      // 更新本地状态
+      set({
+        entries: entries.filter(e => e.id !== entryId)
+      });
+      return true;
+    }
+    
+    return false;
+  },
+
+  editEntry: async (entryId: string, newContent: string): Promise<boolean> => {
+    return get().updateEntry(entryId, { content: newContent });
   },
 
   getPeriodEntries: () => {
@@ -201,7 +333,12 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     let completed = 0;
 
     entries.forEach((entry) => {
-      byType[entry.type] = (byType[entry.type] || 0) + 1;
+      // 使用 categoryId 如果存在，否则使用 type
+      const displayType = entry.categoryId || entry.type;
+      if (!byType[displayType]) {
+        byType[displayType] = 0;
+      }
+      byType[displayType]++;
       byPriority[entry.priority] = (byPriority[entry.priority] || 0) + 1;
       if (entry.type === 'todo' && entry.completed) completed++;
     });

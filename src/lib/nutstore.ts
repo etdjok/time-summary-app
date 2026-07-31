@@ -238,6 +238,28 @@ export async function loadEntries(basePath: string): Promise<MarkdownEntry[]> {
   }
 }
 
+export async function deleteFile(path: string): Promise<{ 
+  success: boolean;
+  error?: string;
+}> {
+  const creds = getCredentials();
+  if (!creds) {
+    return { success: false, error: '未配置坚果云账号' };
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, filePath: path }),
+    });
+    const data = await response.json();
+    return response.ok ? { success: true } : { success: false, error: data.error };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '删除失败' };
+  }
+}
+
 export async function appendToFile(basePath: string, content: string, type: 'chat' | 'todo' | 'journal'): Promise<boolean> {
   const creds = getCredentials();
   if (!creds) {

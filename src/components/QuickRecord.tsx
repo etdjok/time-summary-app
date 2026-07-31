@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Send, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
@@ -25,7 +25,7 @@ export function QuickRecord() {
     setIsSaving(true);
 
     try {
-      const success = await addEntry(content.trim(), activeCategory.target);
+      const success = await addEntry(content.trim(), activeCategory.target, activeCategory.id);
       if (success) {
         setContent('');
         setShowSuccess(true);

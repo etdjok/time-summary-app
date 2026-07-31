@@ -1,27 +1,56 @@
-import { useState } from 'react';
-import { List, Filter, RefreshCw, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText } from 'lucide-react';
+﻿import { useState } from 'react';
+import { List, Filter, RefreshCw, Search, X, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
+import { useCategories } from '../hooks/useCategories';
 import { EntryItem } from './EntryItem';
 import { FILE_TYPE_LABELS } from '../types';
 
-const typeFilters = [
-  { value: 'all', label: '全部', icon: List },
-  { value: 'chat', label: '收集箱', icon: MessageSquare },
-  { value: 'journal', label: '日记', icon: BookOpen },
-  { value: 'todo', label: '待办', icon: CheckCircle },
-  { value: 'idea', label: '想法', icon: Lightbulb },
-  { value: 'note', label: '笔记', icon: FileText },
-];
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText,
+  Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart,
+};
 
-export function SummaryList() {
+interface SummaryListProps {
+  initialTypeFilter?: string;
+}
+
+export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
   const { getPeriodEntries, loadEntries, loading } = useSummaryStore();
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const { categories } = useCategories();
+  const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const entries = getPeriodEntries();
   
-  const filteredEntries = typeFilter === 'all' 
+  // 生成动态类型过滤器
+  const typeFilters = [
+    { value: 'all', label: '全部', icon: List },
+    ...categories.map(cat => ({
+      value: cat.id,
+      label: cat.label,
+      icon: ICON_MAP[cat.icon] || MessageSquare,
+    })),
+  ];
+  
+  // 先按类型过滤（同时匹配 type 和 categoryId）
+  const typeFilteredEntries = typeFilter === 'all' 
     ? entries 
-    : entries.filter(e => e.type === typeFilter);
+    : entries.filter(e => e.type === typeFilter || e.categoryId === typeFilter);
+  
+  // 再按搜索词过滤
+  const filteredEntries = searchQuery.trim() === ''
+    ? typeFilteredEntries
+    : typeFilteredEntries.filter(e => 
+        e.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        e.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+
+  // 获取分类标签
+  const getTypeLabel = (type: string): string => {
+    const cat = categories.find(c => c.id === type);
+    if (cat) return cat.label;
+    return FILE_TYPE_LABELS[type] || type;
+  };
 
   return (
     <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4">
@@ -39,6 +68,26 @@ export function SummaryList() {
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="搜索内容或标签..."
+          className="w-full pl-9 pr-9 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400 transition-colors"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-4">
@@ -68,7 +117,7 @@ export function SummaryList() {
           <List className="w-12 h-12 mb-3 text-gray-300" />
           <p className="text-base">暂无内容</p>
           <p className="text-sm mt-1 text-gray-300">
-            {typeFilter === 'all' ? '这个周期还没有记录' : `没有${FILE_TYPE_LABELS[typeFilter] || typeFilter}类型的记录`}
+            {typeFilter === 'all' ? '这个周期还没有记录' : `没有${getTypeLabel(typeFilter)}类型的记录`}
           </p>
         </div>
       ) : (

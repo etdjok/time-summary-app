@@ -13,6 +13,18 @@ interface ChangeItem {
 
 const changelogData: ChangeItem[] = [
   {
+    date: '2026-07-31',
+    version: 'v1.11',
+    title: '分类标签修复与稳定性提升',
+    changes: [
+      '修复快速记录中选择非默认分类后输出仍显示为收集标签的问题',
+      '优化 @cat 标记解析正则，支持带时间戳前缀的分类标记提取',
+      '确保 addEntry 始终写入 @cat 标记，updateEntry 保留分类信息',
+      '修复 Service Worker 缓存旧版本导致更新不生效的问题',
+      'EntryItem 组件通过 displayType 正确渲染分类标签和颜色',
+    ],
+  },
+  {
     date: '2026-07-23',
     version: 'v1.0',
     title: '心光正式发布',

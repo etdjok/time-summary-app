@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3 } from 'lucide-react';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
 import { SummaryList } from '../components/SummaryList';
@@ -8,6 +8,7 @@ import { NutstoreConfig } from '../components/NutstoreConfig';
 import { CategoryManager } from '../components/CategoryManager';
 import { HelpPage } from '../components/HelpPage';
 import { Changelog } from '../components/Changelog';
+import { QuadrantView } from '../components/QuadrantView';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { hasCredentials } from '../lib/nutstore';
 
@@ -17,7 +18,9 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const { loadEntries } = useSummaryStore();
+  const [viewMode, setViewMode] = useState<'list' | 'quadrant'>('list');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const { loadEntries, entries } = useSummaryStore();
 
   useEffect(() => {
     const connected = hasCredentials();
@@ -28,15 +31,82 @@ export default function Home() {
     }
   }, [loadEntries]);
 
+  const handleExport = () => {
+    const data = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      entries: entries,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `心光-导出-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target?.result as string);
+          if (data.entries && Array.isArray(data.entries)) {
+            alert(`导入成功！共 ${data.entries.length} 条记录。\n注意：导入功能需要手动将数据同步到坚果云。`);
+          } else {
+            alert('文件格式不正确');
+          }
+        } catch {
+          alert('文件解析失败');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  const handleTypeClick = (type: string) => {
+    setTypeFilter(type);
+    setViewMode('list');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.0 · 你的时光记录与思考空间</p>
+            <p className="text-sm text-gray-500 mt-0.5">v1.11 · 你的时光记录与思考空间</p>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleExport}
+              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
+              title="导出数据"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleImport}
+              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
+              title="导入数据"
+            >
+              <Upload className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode(viewMode === 'list' ? 'quadrant' : 'list')}
+              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
+              title={viewMode === 'list' ? '切换到四象限视图' : '切换到列表视图'}
+            >
+              {viewMode === 'list' ? <Grid3x3 className="w-5 h-5" /> : <List className="w-5 h-5" />}
+            </button>
             <button
               onClick={() => setShowHelp(true)}
               className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
@@ -114,8 +184,13 @@ export default function Home() {
         {isConnected && <QuickRecord />}
 
         <PeriodNavigation />
-        <StatsCard />
-        <SummaryList />
+        <StatsCard onTypeClick={handleTypeClick} />
+        
+        {viewMode === 'list' ? (
+          <SummaryList initialTypeFilter={typeFilter} />
+        ) : (
+          <QuadrantView />
+        )}
 
         <div className="text-center mt-8 pb-6">
           <p className="text-xs text-gray-400">

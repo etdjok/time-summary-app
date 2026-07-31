@@ -88,7 +88,7 @@ export function HelpPage({ onClose }: HelpPageProps) {
           </section>
 
           <div className="text-xs text-gray-400 pt-2 border-t border-gray-100">
-            心光 v1.0 · 你的时光记录与思考空间
+            心光 v1.11 · 你的时光记录与思考空间
           </div>
         </div>
       </div>

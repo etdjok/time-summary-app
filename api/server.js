@@ -334,6 +334,35 @@ app.post('/api/nutstore/filesmd', async (req, res) => {
   }
 });
 
+// 删除文件
+app.post('/api/nutstore/delete', async (req, res) => {
+  try {
+    const { username, password, filePath } = req.body;
+    
+    if (!filePath) {
+      res.status(400).json({ error: '缺少文件路径' });
+      return;
+    }
+    
+    const encodedPath = encodePath(filePath);
+    const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}${encodedPath}`, {
+      username,
+      password,
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      res.status(response.status).json({ error: `删除失败 (${response.status})` });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除文件失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });

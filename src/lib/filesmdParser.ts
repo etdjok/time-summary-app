@@ -1,4 +1,4 @@
-import { MarkdownEntry } from '../types';
+﻿import { MarkdownEntry } from '../types';
 
 const formatDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -18,7 +18,10 @@ function extractTags(content: string): string[] {
   const tags: string[] = [];
   let match;
   while ((match = tagRegex.exec(content)) !== null) {
-    tags.push(match[1]);
+    // 排除 @cat:xxx 和 @type 这样的元数据标记
+    if (!match[1].startsWith('cat:')) {
+      tags.push(match[1]);
+    }
   }
   return [...new Set(tags)];
 }
@@ -33,8 +36,18 @@ function extractPriority(content: string): 'urgent' | 'high' | 'medium' | 'low' 
   return 'medium';
 }
 
+function extractCategoryId(content: string): string | null {
+  const match = content.match(/@cat:(\S+)/);
+  return match ? match[1] : null;
+}
+
+function stripCategoryIdMarker(content: string): string {
+  return content.replace(/@cat:\S+\s*/g, '').trim();
+}
+
 function stripMetadata(content: string): string {
   return content
+    .replace(/@cat:\S+\s*/g, '')
     .replace(/^!!?\s*/, '')
     .replace(/#\S+/g, '')
     .replace(/\s+/g, ' ')
@@ -73,11 +86,23 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
       if (isTodo) {
         cleanContent = contentToParse.replace(/^[-*]\s*\[[x ]\]\s*/, '');
       }
+
+      // 提取分类标记
+      const categoryId = extractCategoryId(cleanContent);
+      
+      // 确定最终类型：如果有 @cat:xxx 标记，使用它作为类型
+      let entryType: string;
+      if (categoryId) {
+        entryType = categoryId;
+      } else {
+        entryType = isTodo ? 'todo' : 'chat';
+      }
       
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(cleanContent),
-        type: isTodo ? 'todo' : 'chat',
+        type: entryType,
+        categoryId: categoryId || undefined,
         date: currentDate,
         time: currentTime || undefined,
         sourceFile: fileName,
@@ -127,10 +152,17 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
     const contentToParse = timeMatch ? trimmed.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '') : trimmed;
     
     if (contentToParse && !contentToParse.startsWith('#') && contentToParse.length > 0) {
+      // 提取分类标记
+      const categoryId = extractCategoryId(contentToParse);
+      
+      // 如果有 @cat:xxx 标记，使用它作为类型
+      const entryType = categoryId || 'journal';
+      
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(contentToParse),
-        type: 'journal',
+        type: entryType,
+        categoryId: categoryId || undefined,
         date: currentDate,
         time: currentTime || undefined,
         sourceFile: fileName,
@@ -165,10 +197,17 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
       .replace(/^\d+\.\s*/, '');
     
     if (cleanContent && cleanContent.length > 0) {
+      // 提取分类标记
+      const categoryId = extractCategoryId(cleanContent);
+      
+      // 如果有 @cat:xxx 标记，使用它作为类型
+      const entryType = categoryId || 'todo';
+      
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(cleanContent),
-        type: 'todo',
+        type: entryType,
+        categoryId: categoryId || undefined,
         date: formatDate(new Date()),
         sourceFile: fileName,
         priority: extractPriority(trimmed),
@@ -192,14 +231,18 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
     const trimmed = line.trim();
     
     if (trimmed.match(/^#+\s+/) && currentContent.length > 0) {
+      const contentStr = currentContent.join('\n');
+      const categoryId = extractCategoryId(contentStr);
+      
       entries.push({
         id: `${fileName}-${entries.length}`,
-        content: stripMetadata(currentContent.join('\n')),
-        type: 'note',
+        content: stripMetadata(contentStr),
+        type: categoryId || 'note',
+        categoryId: categoryId || undefined,
         date: formatDate(new Date()),
         sourceFile: fileName,
         priority: 'medium' as const,
-        tags: extractTags(currentContent.join('\n')),
+        tags: extractTags(contentStr),
       });
       currentContent = [];
       currentTitle = trimmed.replace(/^#+\s+/, '');
@@ -211,14 +254,18 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
   }
   
   if (currentContent.length > 0) {
+    const contentStr = currentContent.join('\n');
+    const categoryId = extractCategoryId(contentStr);
+    
     entries.push({
       id: `${fileName}-${entries.length}`,
-      content: stripMetadata(currentContent.join('\n')),
-      type: 'note',
+      content: stripMetadata(contentStr),
+      type: categoryId || 'note',
+      categoryId: categoryId || undefined,
       date: formatDate(new Date()),
       sourceFile: fileName,
       priority: 'medium' as const,
-      tags: extractTags(currentContent.join('\n')),
+      tags: extractTags(contentStr),
     });
   }
   

@@ -1,4 +1,4 @@
-export type PeriodType = 'day' | 'week' | 'month' | 'quarter' | 'half-year' | 'year';
+﻿export type PeriodType = 'day' | 'week' | 'month' | 'quarter' | 'half-year' | 'year';
 
 export interface Period {
   id: string;
@@ -11,7 +11,8 @@ export interface Period {
 export interface MarkdownEntry {
   id: string;
   content: string;
-  type: 'chat' | 'journal' | 'todo' | 'idea' | 'note';
+  type: string;
+  categoryId?: string;
   date: string;
   time?: string;
   sourceFile: string;

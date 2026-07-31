@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -48,7 +48,7 @@ export function EntryItem({ entry }: EntryItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [editContent, setEditContent] = useState(entry.content);
+  const [editContent, setEditContent] = useState('');
   const [editType, setEditType] = useState(entry.type);
   const [editPriority, setEditPriority] = useState(entry.priority);
   const [saving, setSaving] = useState(false);
@@ -91,8 +91,20 @@ export function EntryItem({ entry }: EntryItemProps) {
 
   const handleSaveEdit = async () => {
     setSaving(true);
+
+    // 获取当前日期时间
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    // 原始内容保留不变，修改内容另起一行并带上日期时间
+    let contentToSave = entry.content;
+    if (editContent.trim()) {
+      contentToSave = `${entry.content}\n${dateStr} ${timeStr} ${editContent.trim()}`;
+    }
+
     const success = await updateEntry(entry.id, {
-      content: editContent,
+      content: contentToSave,
       type: editType,
       priority: editPriority as any,
     });
@@ -100,6 +112,7 @@ export function EntryItem({ entry }: EntryItemProps) {
     
     if (success) {
       setIsEditing(false);
+      setEditContent('');
       await loadEntries();
     } else {
       alert('保存失败，请重试');
@@ -119,7 +132,7 @@ export function EntryItem({ entry }: EntryItemProps) {
   };
 
   const handleCancelEdit = () => {
-    setEditContent(entry.content);
+    setEditContent('');
     setEditType(entry.type);
     setEditPriority(entry.priority);
     setIsEditing(false);
@@ -153,11 +166,16 @@ export function EntryItem({ entry }: EntryItemProps) {
           {isEditing ? (
             // 编辑模式
             <div className="space-y-3">
+              <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-2 mb-2 whitespace-pre-wrap">
+                <span className="text-xs text-gray-400">原始内容：</span>
+                {entry.content}
+              </div>
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-amber-400 resize-none"
+                className="w-full px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm focus:outline-none focus:border-amber-400 resize-none"
                 rows={3}
+                placeholder="输入修改或补充内容（将另起一行，自动带上日期时间）..."
               />
               <div className="flex flex-wrap gap-2">
                 <select

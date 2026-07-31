@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3 } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain } from 'lucide-react';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
 import { SummaryList } from '../components/SummaryList';
@@ -9,6 +9,8 @@ import { CategoryManager } from '../components/CategoryManager';
 import { HelpPage } from '../components/HelpPage';
 import { Changelog } from '../components/Changelog';
 import { QuadrantView } from '../components/QuadrantView';
+import { HeatmapView } from '../components/HeatmapView';
+import { AIAnalysis } from '../components/AIAnalysis';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { hasCredentials } from '../lib/nutstore';
 
@@ -18,7 +20,7 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'quadrant'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'quadrant' | 'heatmap' | 'ai'>('list');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const { loadEntries, entries } = useSummaryStore();
 
@@ -33,7 +35,7 @@ export default function Home() {
 
   const handleExport = () => {
     const data = {
-      version: '1.0',
+      version: '1.12',
       exportDate: new Date().toISOString(),
       entries: entries,
     };
@@ -77,13 +79,18 @@ export default function Home() {
     setViewMode('list');
   };
 
+  const handleSelectDate = (date: string) => {
+    // 选中日期后切换到列表视图
+    setViewMode('list');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.11 · 你的时光记录与思考空间</p>
+            <p className="text-sm text-gray-500 mt-0.5">v1.12 · 你的时光记录与思考空间</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -101,11 +108,32 @@ export default function Home() {
               <Upload className="w-5 h-5" />
             </button>
             <button
-              onClick={() => setViewMode(viewMode === 'list' ? 'quadrant' : 'list')}
-              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
-              title={viewMode === 'list' ? '切换到四象限视图' : '切换到列表视图'}
+              onClick={() => setViewMode('list')}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
+              title="列表视图"
             >
-              {viewMode === 'list' ? <Grid3x3 className="w-5 h-5" /> : <List className="w-5 h-5" />}
+              <List className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('quadrant')}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'quadrant' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
+              title="四象限视图"
+            >
+              <Grid3x3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('heatmap')}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'heatmap' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
+              title="热力图视图"
+            >
+              <Calendar className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('ai')}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'ai' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
+              title="AI智能分析"
+            >
+              <Brain className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowHelp(true)}
@@ -186,11 +214,10 @@ export default function Home() {
         <PeriodNavigation />
         <StatsCard onTypeClick={handleTypeClick} />
         
-        {viewMode === 'list' ? (
-          <SummaryList initialTypeFilter={typeFilter} />
-        ) : (
-          <QuadrantView />
-        )}
+        {viewMode === 'list' && <SummaryList initialTypeFilter={typeFilter} />}
+        {viewMode === 'quadrant' && <QuadrantView />}
+        {viewMode === 'heatmap' && <HeatmapView onSelectDate={handleSelectDate} />}
+        {viewMode === 'ai' && <AIAnalysis />}
 
         <div className="text-center mt-8 pb-6">
           <p className="text-xs text-gray-400">

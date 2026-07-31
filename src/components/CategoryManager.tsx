@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
+import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Lock, Pencil } from 'lucide-react';
+import { changePassword } from '../lib/auth';
 import { useCategories } from '../hooks/useCategories';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -16,6 +17,7 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
     categories,
     addCategory,
     removeCategory,
+    updateCategory,
     resetCategories,
     colorOptions,
     iconOptions,
@@ -25,7 +27,13 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
   const [newLabel, setNewLabel] = useState('');
   const [newIcon, setNewIcon] = useState('Star');
   const [newColor, setNewColor] = useState('bg-blue-500');
-  const [newTarget, setNewTarget] = useState<'chat' | 'todo' | 'journal'>('chat');
+  const [newTarget, setNewTarget] = useState<'chat' | 'todo' | 'journal' | 'idea' | 'note'>('chat');
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [pwdMsgType, setPwdMsgType] = useState<'success' | 'error'>('success');
 
   const handleAdd = () => {
     if (!newLabel.trim()) return;
@@ -36,6 +44,62 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
       target: newTarget,
     });
     setNewLabel('');
+  };
+
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editIcon, setEditIcon] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [editTarget, setEditTarget] = useState<'chat' | 'todo' | 'journal' | 'idea' | 'note'>('chat');
+
+  const startEdit = (cat: any) => {
+    setEditingId(cat.id);
+    setEditLabel(cat.label);
+    setEditIcon(cat.icon);
+    setEditColor(cat.color);
+    setEditTarget(cat.target);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
+  const saveEdit = (id: string) => {
+    if (!editLabel.trim()) return;
+    updateCategory(id, {
+      label: editLabel.trim(),
+      icon: editIcon,
+      color: editColor,
+      target: editTarget,
+    });
+    setEditingId(null);
+  };
+
+  const handleChangePassword = async () => {
+    setPwdMsg('');
+    if (!newPwd.trim() || newPwd.length < 4) {
+      setPwdMsg('新密码至少4个字符');
+      setPwdMsgType('error');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdMsg('两次输入不一致');
+      setPwdMsgType('error');
+      return;
+    }
+    const result = await changePassword(currentPwd, newPwd);
+    if (result.success) {
+      setPwdMsg('密码修改成功，所有设备需重新登录');
+      setPwdMsgType('success');
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+      setTimeout(() => { setShowPasswordChange(false); setPwdMsg(''); }, 3000);
+    } else {
+      setPwdMsg(result.error || '修改失败');
+      setPwdMsgType('error');
+    }
   };
 
   return (
@@ -57,6 +121,66 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
             <p className="text-sm font-medium text-gray-700">当前分类</p>
             {categories.map((cat) => {
               const Icon = ICON_MAP[cat.icon] || MessageSquare;
+              const isEditing = editingId === cat.id;
+
+              if (isEditing) {
+                return (
+                  <div key={cat.id} className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                    <input
+                      type="text"
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      placeholder="分类名称"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-amber-400"
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                      <select
+                        value={editIcon}
+                        onChange={(e) => setEditIcon(e.target.value)}
+                        className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-amber-400"
+                      >
+                        {iconOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={editColor}
+                        onChange={(e) => setEditColor(e.target.value)}
+                        className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-amber-400"
+                      >
+                        {colorOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={editTarget}
+                        onChange={(e) => setEditTarget(e.target.value as 'chat' | 'todo' | 'journal' | 'idea' | 'note')}
+                        className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-amber-400"
+                      >
+                        {targetOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => saveEdit(cat.id)}
+                        disabled={!editLabel.trim()}
+                        className="flex-1 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="flex-1 px-3 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-300"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={cat.id}
@@ -72,8 +196,16 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                     </p>
                   </div>
                   <button
+                    onClick={() => startEdit(cat)}
+                    className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="编辑"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => removeCategory(cat.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    title="删除"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -117,7 +249,7 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
 
               <select
                 value={newTarget}
-                onChange={(e) => setNewTarget(e.target.value as 'chat' | 'todo' | 'journal')}
+                onChange={(e) => setNewTarget(e.target.value as 'chat' | 'todo' | 'journal' | 'idea' | 'note')}
                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
               >
                 {targetOptions.map((opt) => (
@@ -134,6 +266,55 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                 添加分类
               </button>
             </div>
+          </div>
+
+          {/* 修改密码 */}
+          <div className="border-t border-gray-100 pt-4">
+            <button
+              onClick={() => setShowPasswordChange(!showPasswordChange)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-colors font-medium text-sm"
+            >
+              <Lock className="w-4 h-4" />
+              {showPasswordChange ? '收起' : '修改密码'}
+            </button>
+
+            {showPasswordChange && (
+              <div className="mt-3 space-y-3">
+                <input
+                  type="password"
+                  value={currentPwd}
+                  onChange={(e) => setCurrentPwd(e.target.value)}
+                  placeholder="当前密码"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                />
+                <input
+                  type="password"
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  placeholder="新密码（至少4位）"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                />
+                <input
+                  type="password"
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  placeholder="确认新密码"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                  onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                />
+                {pwdMsg && (
+                  <p className={`text-xs text-center ${pwdMsgType === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+                    {pwdMsg}
+                  </p>
+                )}
+                <button
+                  onClick={handleChangePassword}
+                  className="w-full px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors font-medium text-sm"
+                >
+                  确认修改
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

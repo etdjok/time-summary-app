@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>心光 - 个人日常管理系统</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+  :root{
+    --c1:#ff6a00;--c2:#ee0979;--c3:#f7971e;--c4:#ffd200;
+    --bg1:#1a1a2e;--bg2:#16213e;
+    --glass:rgba(255,255,255,0.08);
+    --glass-border:rgba(255,255,255,0.12);
+  }
+  html,body{height:100%;overflow:hidden;font-family:'Noto Sans SC','Segoe UI',sans-serif;background:#0f0f1a;color:#fff}
+  
+  /* ===== slide container ===== */
+  .deck{position:relative;width:100vw;height:100vh}
+  .slide{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;padding:60px 80px;
+    opacity:0;pointer-events:none;
+    transition:opacity .6s cubic-bezier(.4,0,.2,1),transform .6s cubic-bezier(.4,0,.2,1);
+    transform:translateX(60px);
+  }
+  .slide.active{opacity:1;pointer-events:auto;transform:translateX(0)}
+  .slide.exit-left{opacity:0;transform:translateX(-60px)}
+
+  /* ===== backgrounds ===== */
+  .slide::before{
+    content:'';position:absolute;inset:0;z-index:0;
+    background:linear-gradient(135deg,#1a1a2e 0%,#16213e 40%,#0f3460 100%);
+  }
+  .slide::after{
+    content:'';position:absolute;inset:0;z-index:0;opacity:.35;
+    background:radial-gradient(circle at 20% 80%,rgba(255,106,0,.3) 0%,transparent 50%),
+               radial-gradient(circle at 80% 20%,rgba(238,9,121,.2) 0%,transparent 50%),
+               radial-gradient(circle at 50% 50%,rgba(247,151,30,.15) 0%,transparent 60%);
+  }
+  .slide>*{position:relative;z-index:1}
+
+  /* ===== cover slide ===== */
+  .cover-title{
+    font-size:clamp(64px,10vw,120px);font-weight:900;
+    background:linear-gradient(135deg,var(--c3),var(--c1),var(--c2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;
+    letter-spacing:.05em;line-height:1.1;
+    text-shadow:0 0 80px rgba(255,106,0,.3);
+    animation:glow 3s ease-in-out infinite alternate;
+  }
+  @keyframes glow{
+    0%{filter:brightness(1)}
+    100%{filter:brightness(1.15)}
+  }
+  .cover-sub{
+    font-size:clamp(20px,3vw,36px);font-weight:300;
+    color:rgba(255,255,255,.7);margin-top:16px;letter-spacing:.15em;
+  }
+  .cover-date{
+    font-size:clamp(14px,1.8vw,20px);color:rgba(255,255,255,.4);
+    margin-top:32px;letter-spacing:.1em;
+  }
+
+  /* ===== generic slide ===== */
+  .slide-title{
+    font-size:clamp(28px,4vw,48px);font-weight:700;
+    background:linear-gradient(90deg,var(--c3),var(--c1));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;margin-bottom:40px;text-align:center;
+  }
+  .content-grid{
+    display:grid;gap:20px;width:100%;max-width:1000px;
+  }
+  .content-grid.cols-2{grid-template-columns:1fr 1fr}
+  .content-grid.cols-1{grid-template-columns:1fr}
+
+  .card{
+    background:var(--glass);border:1px solid var(--glass-border);
+    border-radius:16px;padding:24px 28px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    transition:transform .3s,box-shadow .3s;
+  }
+  .card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(255,106,0,.15)}
+  .card-icon{font-size:28px;margin-bottom:8px;display:block}
+  .card-label{font-size:clamp(14px,1.6vw,18px);font-weight:500;color:rgba(255,255,255,.92)}
+  .card-desc{font-size:clamp(12px,1.2vw,14px);color:rgba(255,255,255,.55);margin-top:4px}
+
+  /* list style */
+  .list{list-style:none;display:flex;flex-direction:column;gap:18px;max-width:860px;width:100%}
+  .list li{
+    display:flex;align-items:flex-start;gap:16px;
+    font-size:clamp(16px,1.8vw,22px);font-weight:400;
+    color:rgba(255,255,255,.85);line-height:1.6;
+  }
+  .list li .bullet{
+    flex-shrink:0;width:10px;height:10px;border-radius:50%;margin-top:10px;
+    background:linear-gradient(135deg,var(--c3),var(--c1));
+  }
+
+  /* quadrant */
+  .quadrant{
+    display:grid;grid-template-columns:1fr 1fr;gap:16px;
+    max-width:800px;width:100%;
+  }
+  .q-cell{
+    border-radius:16px;padding:28px 24px;text-align:center;
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  }
+  .q-cell .q-label{font-size:clamp(13px,1.4vw,16px);color:rgba(255,255,255,.5);margin-bottom:6px}
+  .q-cell .q-name{font-size:clamp(18px,2.2vw,26px);font-weight:700;margin-bottom:8px}
+  .q-cell .q-action{font-size:clamp(14px,1.5vw,18px);color:rgba(255,255,255,.65)}
+  .q1{background:rgba(255,59,48,.18);border-color:rgba(255,59,48,.3)}
+  .q1 .q-name{color:#ff6b6b}
+  .q2{background:rgba(255,204,0,.15);border-color:rgba(255,204,0,.25)}
+  .q2 .q-name{color:#ffd60a}
+  .q3{background:rgba(48,209,255,.15);border-color:rgba(48,209,255,.25)}
+  .q3 .q-name{color:#64d2ff}
+  .q4{background:rgba(142,142,147,.12);border-color:rgba(142,142,147,.2)}
+  .q4 .q-name{color:#aeaeb2}
+
+  /* heatmap */
+  .heatmap-wrap{max-width:800px;width:100%;text-align:center}
+  .heatmap-grid{
+    display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:24px;
+  }
+  .heatmap-cell{
+    aspect-ratio:1;border-radius:4px;
+    transition:transform .2s;
+  }
+  .heatmap-cell:hover{transform:scale(1.3)}
+  .heatmap-legend{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:20px;font-size:13px;color:rgba(255,255,255,.5)}
+  .heatmap-legend span{display:inline-block;width:14px;height:14px;border-radius:3px}
+  .heatmap-desc{font-size:clamp(14px,1.5vw,18px);color:rgba(255,255,255,.6);margin-top:16px;line-height:1.8}
+
+  /* timeline */
+  .timeline{display:flex;flex-direction:column;gap:0;max-width:700px;width:100%;position:relative}
+  .timeline::before{
+    content:'';position:absolute;left:19px;top:8px;bottom:8px;width:2px;
+    background:linear-gradient(180deg,var(--c3),var(--c1),var(--c2));border-radius:2px;
+  }
+  .tl-item{display:flex;align-items:flex-start;gap:20px;padding:14px 0}
+  .tl-dot{
+    flex-shrink:0;width:40px;height:40px;border-radius:50%;
+    background:linear-gradient(135deg,var(--c3),var(--c1));
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;font-weight:700;color:#fff;z-index:1;
+    box-shadow:0 0 20px rgba(255,106,0,.3);
+  }
+  .tl-text{font-size:clamp(16px,1.8vw,22px);color:rgba(255,255,255,.85);padding-top:6px}
+  .tl-time{font-size:clamp(12px,1.2vw,14px);color:rgba(255,255,255,.45);margin-top:2px}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;max-width:700px;width:100%}
+  .stat-card{
+    background:var(--glass);border:1px solid var(--glass-border);
+    border-radius:16px;padding:32px 24px;text-align:center;
+    backdrop-filter:blur(12px);
+  }
+  .stat-val{
+    font-size:clamp(32px,4vw,52px);font-weight:900;
+    background:linear-gradient(135deg,var(--c3),var(--c1));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .stat-label{font-size:clamp(13px,1.4vw,16px);color:rgba(255,255,255,.55);margin-top:8px}
+
+  /* end page */
+  .end-title{
+    font-size:clamp(56px,9vw,100px);font-weight:900;
+    background:linear-gradient(135deg,var(--c3),var(--c1),var(--c2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .end-sub{font-size:clamp(16px,2.2vw,24px);color:rgba(255,255,255,.5);margin-top:16px;letter-spacing:.1em}
+  .end-gh{
+    font-size:clamp(14px,1.6vw,18px);color:rgba(255,255,255,.35);margin-top:32px;
+    border:1px solid rgba(255,255,255,.15);border-radius:40px;padding:12px 32px;
+    transition:border-color .3s;
+  }
+  .end-gh:hover{border-color:rgba(255,255,255,.4)}
+
+  /* security layers */
+  .layers{display:flex;flex-direction:column;gap:14px;max-width:700px;width:100%}
+  .layer{
+    display:flex;align-items:center;gap:20px;
+    background:var(--glass);border:1px solid var(--glass-border);
+    border-radius:14px;padding:20px 24px;
+    backdrop-filter:blur(8px);
+  }
+  .layer-num{
+    flex-shrink:0;width:44px;height:44px;border-radius:12px;
+    background:linear-gradient(135deg,var(--c3),var(--c1));
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;font-weight:700;
+  }
+  .layer-text{font-size:clamp(15px,1.6vw,20px);color:rgba(255,255,255,.85)}
+
+  /* deploy */
+  .deploy-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:800px;width:100%}
+  .deploy-card{
+    background:var(--glass);border:1px solid var(--glass-border);
+    border-radius:16px;padding:28px 24px;
+    backdrop-filter:blur(12px);
+  }
+  .deploy-card .dc-icon{font-size:32px;margin-bottom:10px}
+  .deploy-card .dc-title{font-size:clamp(15px,1.6vw,20px);font-weight:600;color:rgba(255,255,255,.9)}
+  .deploy-card .dc-val{font-size:clamp(13px,1.3vw,16px);color:rgba(255,255,255,.5);margin-top:6px}
+
+  /* ===== page number ===== */
+  .page-num{
+    position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+    font-size:14px;color:rgba(255,255,255,.3);letter-spacing:.1em;z-index:100;
+    font-weight:300;
+  }
+
+  /* ===== nav hint ===== */
+  .nav-hint{
+    position:fixed;bottom:28px;right:40px;
+    font-size:13px;color:rgba(255,255,255,.25);z-index:100;
+    display:flex;align-items:center;gap:8px;
+  }
+  .nav-hint kbd{
+    display:inline-block;padding:2px 10px;border-radius:6px;
+    border:1px solid rgba(255,255,255,.2);font-size:12px;
+    font-family:inherit;color:rgba(255,255,255,.35);
+  }
+
+  /* ===== progress bar ===== */
+  .progress{
+    position:fixed;top:0;left:0;height:3px;z-index:200;
+    background:linear-gradient(90deg,var(--c3),var(--c1),var(--c2));
+    transition:width .4s cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ===== responsive ===== */
+  @media(max-width:768px){
+    .slide{padding:40px 28px}
+    .content-grid.cols-2{grid-template-columns:1fr}
+    .quadrant{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr}
+    .deploy-grid{grid-template-columns:1fr}
+    .nav-hint{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="deck" id="deck">
+
+  <!-- Slide 1: Cover -->
+  <div class="slide active" data-index="0">
+    <div class="cover-title">心光</div>
+    <div class="cover-sub">个人日常管理系统</div>
+    <div class="cover-date">2026 年 7 月</div>
+  </div>
+
+  <!-- Slide 2: Background -->
+  <div class="slide" data-index="1">
+    <div class="slide-title">为什么做心光？</div>
+    <ul class="list">
+      <li><span class="bullet"></span>需要一个跨设备的个人管理工具</li>
+      <li><span class="bullet"></span>希望支持离线使用</li>
+      <li><span class="bullet"></span>想要数据可视化展示</li>
+      <li><span class="bullet"></span>利用旧手机做服务器，低成本部署</li>
+    </ul>
+  </div>
+
+  <!-- Slide 3: Tech Stack -->
+  <div class="slide" data-index="2">
+    <div class="slide-title">技术架构</div>
+    <div class="content-grid cols-2">
+      <div class="card">
+        <span class="card-icon">⚛️</span>
+        <div class="card-label">前端</div>
+        <div class="card-desc">React + TypeScript + Vite</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">🖥️</span>
+        <div class="card-label">后端</div>
+        <div class="card-desc">Node.js + Express</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">📱</span>
+        <div class="card-label">部署</div>
+        <div class="card-desc">小米6 + Termux</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">💾</span>
+        <div class="card-label">存储</div>
+        <div class="card-desc">localStorage + 坚果云 WebDAV</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Core Features -->
+  <div class="slide" data-index="3">
+    <div class="slide-title">核心功能</div>
+    <div class="content-grid cols-2">
+      <div class="card">
+        <span class="card-icon">✏️</span>
+        <div class="card-label">快速记录</div>
+        <div class="card-desc">收集 / 待办 / 想法 / 日记 / 笔记</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">📅</span>
+        <div class="card-label">时间周期管理</div>
+        <div class="card-desc">日 / 周 / 月 / 季度 / 年</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">📊</span>
+        <div class="card-label">可视化视图</div>
+        <div class="card-desc">列表 / 四象限 / 热力图</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">🔄</span>
+        <div class="card-label">编辑功能</div>
+        <div class="card-desc">发送后可编辑、重新分类</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">📡</span>
+        <div class="card-label">离线支持</div>
+        <div class="card-desc">PWA / Service Worker</div>
+      </div>
+      <div class="card">
+        <span class="card-icon">🔐</span>
+        <div class="card-label">密码保护</div>
+        <div class="card-desc">服务器端统一管理</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 5: Quadrant -->
+  <div class="slide" data-index="4">
+    <div class="slide-title">四象限矩阵视图</div>
+    <div class="quadrant">
+      <div class="q-cell q1">
+        <div class="q-label">Q1</div>
+        <div class="q-name">紧急且重要</div>
+        <div class="q-action">→ 立即执行</div>
+      </div>
+      <div class="q-cell q2">
+        <div class="q-label">Q2</div>
+        <div class="q-name">重要不紧急</div>
+        <div class="q-action">→ 计划安排</div>
+      </div>
+      <div class="q-cell q3">
+        <div class="q-label">Q3</div>
+        <div class="q-name">紧急不重要</div>
+        <div class="q-action">→ 委托减少</div>
+      </div>
+      <div class="q-cell q4">
+        <div class="q-label">Q4</div>
+        <div class="q-name">不紧急不重要</div>
+        <div class="q-action">→ 尽量删除</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Heatmap -->
+  <div class="slide" data-index="5">
+    <div class="slide-title">日历热力图</div>
+    <div class="heatmap-wrap">
+      <div class="heatmap-grid" id="heatmap"></div>
+      <div class="heatmap-legend">
+        少
+        <span style="background:rgba(255,106,0,.1)"></span>
+        <span style="background:rgba(255,106,0,.25)"></span>
+        <span style="background:rgba(255,106,0,.45)"></span>
+        <span style="background:rgba(255,106,0,.65)"></span>
+        <span style="background:rgba(255,106,0,.85)"></span>
+        多
+      </div>
+      <div class="heatmap-desc">
+        以颜色深浅表示每日任务数量<br>
+        直观展示任务密度和规律 · 支持按月浏览
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 7: Deployment -->
+  <div class="slide" data-index="6">
+    <div class="slide-title">部署方案</div>
+    <div class="deploy-grid">
+      <div class="deploy-card">
+        <div class="dc-icon">📱</div>
+        <div class="dc-title">服务器</div>
+        <div class="dc-val">小米6手机（Termux）</div>
+      </div>
+      <div class="deploy-card">
+        <div class="dc-icon">🌐</div>
+        <div class="dc-title">局域网访问</div>
+        <div class="dc-val">http://192.168.3.3:3001</div>
+      </div>
+      <div class="deploy-card">
+        <div class="dc-icon">🔗</div>
+        <div class="dc-title">外网访问</div>
+        <div class="dc-val">ngrok 内网穿透</div>
+      </div>
+      <div class="deploy-card">
+        <div class="dc-icon">✨</div>
+        <div class="dc-title">优势</div>
+        <div class="dc-val">低成本 · 低功耗 · 随时随地</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 8: Security -->
+  <div class="slide" data-index="7">
+    <div class="slide-title">安全防护</div>
+    <div class="layers">
+      <div class="layer">
+        <div class="layer-num">1</div>
+        <div class="layer-text">登录密码认证</div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">2</div>
+        <div class="layer-text">会话超时（24小时）</div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">3</div>
+        <div class="layer-text">内网隔离</div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">4</div>
+        <div class="layer-text">SSH 访问保护</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 9: Timeline -->
+  <div class="slide" data-index="8">
+    <div class="slide-title">开发历程</div>
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot">1</div>
+        <div>
+          <div class="tl-text">基础功能</div>
+          <div class="tl-time">7 月上旬</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">2</div>
+        <div>
+          <div class="tl-text">离线支持</div>
+          <div class="tl-time">7 月中旬</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">3</div>
+        <div>
+          <div class="tl-text">可视化功能</div>
+          <div class="tl-time">7 月中旬</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">4</div>
+        <div>
+          <div class="tl-text">功能完善</div>
+          <div class="tl-time">7 月下旬</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">5</div>
+        <div>
+          <div class="tl-text">部署优化</div>
+          <div class="tl-time">7 月下旬</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 10: Results -->
+  <div class="slide" data-index="9">
+    <div class="slide-title">项目成果</div>
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-val">7/7 ✓</div>
+        <div class="stat-label">功能完整度</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">&lt;2s</div>
+        <div class="stat-label">首屏加载</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">127KB</div>
+        <div class="stat-label">构建产物（gzip）</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">全平台</div>
+        <div class="stat-label">手机 / 平板 / 电脑</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 11: Future -->
+  <div class="slide" data-index="10">
+    <div class="slide-title">未来规划</div>
+    <ul class="list">
+      <li><span class="bullet"></span>数据导出 / 导入</li>
+      <li><span class="bullet"></span>多用户支持</li>
+      <li><span class="bullet"></span>提醒通知功能</li>
+      <li><span class="bullet"></span>数据库存储</li>
+      <li><span class="bullet"></span>实时同步</li>
+    </ul>
+  </div>
+
+  <!-- Slide 12: End -->
+  <div class="slide" data-index="11">
+    <div class="end-title">谢谢</div>
+    <div class="end-sub">心光 · 你的时光记录与思考空间</div>
+    <div class="end-gh">github.com/etdjok/time-summary-app</div>
+  </div>
+
+</div>
+
+<!-- Page number -->
+<div class="page-num" id="pageNum"></div>
+
+<!-- Nav hint -->
+<div class="nav-hint">
+  <kbd>←</kbd><kbd>→</kbd> 切换
+</div>
+
+<script>
+(function(){
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let cur = 0;
+
+  const pageNum = document.getElementById('pageNum');
+  const progress = document.getElementById('progress');
+
+  function update(){
+    slides.forEach((s,i)=>{
+      s.classList.remove('active','exit-left');
+      if(i < cur) s.classList.add('exit-left');
+      if(i === cur) s.classList.add('active');
+    });
+    pageNum.textContent = (cur+1) + ' / ' + total;
+    progress.style.width = ((cur+1)/total*100)+'%';
+  }
+
+  function next(){ if(cur < total-1){ cur++; update(); } }
+  function prev(){ if(cur > 0){ cur--; update(); } }
+
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown') next();
+    if(e.key==='ArrowLeft'||e.key==='PageUp') prev();
+    if(e.key==='Home'){ cur=0; update(); }
+    if(e.key==='End'){ cur=total-1; update(); }
+  });
+
+  /* touch swipe */
+  let tx=0;
+  document.addEventListener('touchstart',e=>{ tx=e.changedTouches[0].screenX; });
+  document.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].screenX-tx;
+    if(dx<-50) next();
+    if(dx>50) prev();
+  });
+
+  /* generate heatmap */
+  const hm=document.getElementById('heatmap');
+  if(hm){
+    const levels=[.08,.2,.4,.6,.85];
+    for(let i=0;i<35;i++){
+      const d=document.createElement('div');
+      d.className='heatmap-cell';
+      const l=levels[Math.floor(Math.random()*levels.length)];
+      d.style.background='rgba(255,106,0,'+l+')';
+      hm.appendChild(d);
+    }
+  }
+
+  update();
+})();
+</script>
+</body>
+</html>

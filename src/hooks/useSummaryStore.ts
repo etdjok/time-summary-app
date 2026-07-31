@@ -189,36 +189,68 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
 
     const lines = readResult.content.split('\n');
     const updatedLines: string[] = [];
-    
-    for (const line of lines) {
+
+    // 判断一行是否为新条目的开头
+    const isNewEntry = (l: string): boolean => {
+      const t = l.trim();
+      if (!t) return true;
+      if (t.match(/^##\s/)) return true;
+      if (t.match(/^###?\s/)) return true;
+      if (t.match(/^\d{1,2}:\d{2}\s/)) return true;
+      if (t.match(/^[-*]\s*\[[x ]\]/)) return true;
+      if (t.match(/^[-*]\s+/)) return true;
+      if (t.match(/^\d+\.\s/)) return true;
+      return false;
+    };
+
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+
       // 匹配当前条目（通过时间和内容匹配）
       const timeMatch = line.match(/^(\d{2}:\d{2})\s+(.+)$/);
       const todoMatch = line.match(/^- \[([ x])\]\s+(\d{2}:\d{2})\s+(.+)$/);
-      
+
       let isTargetLine = false;
-      let newLine = line;
-      
+
       if (todoMatch) {
-        const [, check, time, content] = todoMatch;
-        if (time === entry.time && content.includes(entry.content.substring(0, 20))) {
+        const [, check, time, fileContent] = todoMatch;
+        if (time === entry.time && fileContent.includes(entry.content.substring(0, 20))) {
           isTargetLine = true;
-          const newContent = updates.content || entry.content;
-          const newPriority = updates.priority || entry.priority;
-          const completed = updates.completed ?? entry.completed;
-          const checkMark = completed ? 'x' : ' ';
-          newLine = `- [${checkMark}] ${time} ${categoryMarker}${newContent} #${newPriority}`;
         }
       } else if (timeMatch) {
-        const [, time, content] = timeMatch;
-        if (time === entry.time && content.includes(entry.content.substring(0, 20))) {
+        const [, time, fileContent] = timeMatch;
+        if (time === entry.time && fileContent.includes(entry.content.substring(0, 20))) {
           isTargetLine = true;
-          const newContent = updates.content || entry.content;
-          const newPriority = updates.priority || entry.priority;
-          newLine = `${time} ${categoryMarker}${newContent} #${newPriority}`;
         }
       }
-      
-      updatedLines.push(newLine);
+
+      if (isTargetLine) {
+        // 收集所有延续行（不以时间戳/待办/标题开头的行）
+        let blockEnd = i + 1;
+        while (blockEnd < lines.length && !isNewEntry(lines[blockEnd])) {
+          blockEnd++;
+        }
+
+        // 替换整个块
+        const newContent = updates.content || entry.content;
+        const newPriority = updates.priority || entry.priority;
+        const completed = updates.completed ?? entry.completed;
+
+        let newLine: string;
+        if (todoMatch) {
+          const checkMark = completed ? 'x' : ' ';
+          newLine = `- [${checkMark}] ${entry.time} ${categoryMarker}${newContent} #${newPriority}`;
+        } else {
+          newLine = `${entry.time} ${categoryMarker}${newContent} #${newPriority}`;
+        }
+
+        updatedLines.push(newLine);
+        i = blockEnd; // 跳过延续行
+      } else {
+        updatedLines.push(line);
+        i++;
+      }
     }
 
     const newContent = updatedLines.join('\n');

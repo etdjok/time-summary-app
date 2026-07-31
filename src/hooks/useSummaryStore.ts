@@ -136,7 +136,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     set({ nutstoreBasePath: path });
   },
 
-  addEntry: async (content: string, target: 'chat' | 'todo' | 'journal', categoryId?: string): Promise<boolean> => {
+  addEntry: async (content: string, target: 'chat' | 'todo' | 'journal', categoryId?: string, priority?: 'urgent' | 'high' | 'medium' | 'low'): Promise<boolean> => {
     const basePath = get().nutstoreBasePath;
     let success = false;
 
@@ -145,7 +145,9 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
 
     // 只要提供了 categoryId，就在内容中嵌入 @cat:xxx 标记，确保解析时能还原分类
     const catMarker = categoryId ? `@cat:${categoryId} ` : '';
-    let formattedContent = `${timeStr} ${catMarker}${content}`;
+    // 优先级标记（用于四象限分类）
+    const priorityMarker = priority ? ` #${priority}` : '';
+    let formattedContent = `${timeStr} ${catMarker}${content}${priorityMarker}`;
 
     if (target === 'todo') {
       formattedContent = `- [ ] ${formattedContent}`;

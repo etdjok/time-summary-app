@@ -1,5 +1,5 @@
-﻿import { useState } from 'react';
-import { Send, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
+import { useState } from 'react';
+import { Send, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Grid3x3, AlertTriangle, Target, Clock, MinusCircle } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
 
@@ -8,10 +8,19 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart,
 };
 
+const quadrants = [
+  { id: 'urgent', label: '紧急且重要', icon: AlertTriangle, color: 'bg-red-500', activeColor: 'bg-red-100 text-red-700 border-red-300' },
+  { id: 'high', label: '重要不紧急', icon: Target, color: 'bg-orange-500', activeColor: 'bg-orange-100 text-orange-700 border-orange-300' },
+  { id: 'medium', label: '紧急不重要', icon: Clock, color: 'bg-amber-500', activeColor: 'bg-amber-100 text-amber-700 border-amber-300' },
+  { id: 'low', label: '不紧急不重要', icon: MinusCircle, color: 'bg-gray-500', activeColor: 'bg-gray-100 text-gray-700 border-gray-300' },
+] as const;
+
 export function QuickRecord() {
   const [content, setContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [selectedPriority, setSelectedPriority] = useState<string | null>(null);
+  const [showQuadrants, setShowQuadrants] = useState(false);
   const { addEntry, loadEntries } = useSummaryStore();
   const { categories } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id || 'chat');
@@ -25,9 +34,12 @@ export function QuickRecord() {
     setIsSaving(true);
 
     try {
-      const success = await addEntry(content.trim(), activeCategory.target, activeCategory.id);
+      const priority = selectedPriority as 'urgent' | 'high' | 'medium' | 'low' | undefined;
+      const success = await addEntry(content.trim(), activeCategory.target, activeCategory.id, priority);
       if (success) {
         setContent('');
+        setSelectedPriority(null);
+        setShowQuadrants(false);
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 2000);
         loadEntries();
@@ -66,6 +78,58 @@ export function QuickRecord() {
               </button>
             );
           })}
+        </div>
+
+        {/* 四象限选择 */}
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setShowQuadrants(!showQuadrants)}
+            className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-all border ${
+              showQuadrants || selectedPriority
+                ? 'bg-amber-100 text-amber-700 border-amber-300'
+                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Grid3x3 className="w-3.5 h-3.5" />
+            {selectedPriority
+              ? quadrants.find(q => q.id === selectedPriority)?.label
+              : '选择象限（可选）'}
+          </button>
+
+          {showQuadrants && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {quadrants.map((q) => {
+                const Icon = q.icon;
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPriority(selectedPriority === q.id ? null : q.id);
+                    }}
+                    className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border transition-all ${
+                      selectedPriority === q.id
+                        ? q.activeColor
+                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {q.label}
+                  </button>
+                );
+              })}
+              {selectedPriority && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPriority(null)}
+                  className="px-2.5 py-1 text-xs text-gray-400 hover:text-gray-600"
+                >
+                  清除
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">

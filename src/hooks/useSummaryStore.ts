@@ -379,15 +379,14 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     end.setHours(23, 59, 59, 999);
     
     const today = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(today);
+    // v1.18.3: 无日期条目视为今天的记录，只要今天在当前周期范围内就显示
+    const todayInPeriod = todayDate >= start && todayDate <= end;
     
     return entries
       .filter((entry) => {
-        // v1.18: 无日期条目不归入任何周期，避免"明天变成未记录日期"的问题
-        // 只有当 entry.date 存在时才参与周期过滤
         if (!entry.date) {
-          // 当周期是 day 且是今天时，仍然显示无日期条目（保持向后兼容）
-          // 否则不显示
-          return currentPeriod.type === 'day' && currentPeriod.startDate === today;
+          return todayInPeriod;
         }
         const entryDate = new Date(entry.date);
         return entryDate >= start && entryDate <= end;

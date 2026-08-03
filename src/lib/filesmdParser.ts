@@ -20,10 +20,17 @@ function extractTags(content: string): string[] {
 }
 
 function extractPriority(content: string): 'urgent' | 'high' | 'medium' | 'low' {
-  if (content.includes('!!') || content.includes('紧急') || content.includes('urgent')) {
+  // 优先解析 #priority 标签格式（新增的标准格式）
+  const priorityMatch = content.match(/#(urgent|high|medium|low)/i);
+  if (priorityMatch) {
+    return priorityMatch[1].toLowerCase() as 'urgent' | 'high' | 'medium' | 'low';
+  }
+  // 兼容旧格式：!! 表示紧急且重要
+  if (content.includes('!!')) {
     return 'urgent';
   }
-  if (content.includes('!') || content.includes('重要') || content.includes('important')) {
+  // 兼容旧格式：! 表示重要不紧急
+  if (content.includes('!')) {
     return 'high';
   }
   return 'medium';
@@ -297,12 +304,18 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
       const contentStr = currentContent.join('\n');
       const categoryId = extractCategoryId(contentStr);
 
+      // 修复 v1.17：当没有 ## 日期头时，尝试从内容中提取日期
+      let brainDate = currentDate;
+      if (!brainDate) {
+        brainDate = extractDateFromContent(contentStr) || '';
+      }
+
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(contentStr),
         type: categoryId || 'note',
         categoryId: categoryId || undefined,
-        date: currentDate,
+        date: brainDate,
         sourceFile: fileName,
         priority: 'medium' as const,
         tags: extractTags(contentStr),

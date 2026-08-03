@@ -11,7 +11,6 @@ const quadrantConfig = [
     titleColor: 'text-red-700',
     iconColor: 'text-red-500',
     priorities: ['urgent'],
-    types: ['todo'],
   },
   {
     id: 'important-not-urgent',
@@ -21,7 +20,6 @@ const quadrantConfig = [
     titleColor: 'text-orange-700',
     iconColor: 'text-orange-500',
     priorities: ['high'],
-    types: ['todo'],
   },
   {
     id: 'urgent-not-important',
@@ -30,8 +28,7 @@ const quadrantConfig = [
     color: 'bg-amber-50 border-amber-200',
     titleColor: 'text-amber-700',
     iconColor: 'text-amber-500',
-    priorities: ['urgent', 'high'],
-    types: ['chat', 'journal', 'idea', 'note'],
+    priorities: ['medium'],
   },
   {
     id: 'not-urgent-not-important',
@@ -40,8 +37,7 @@ const quadrantConfig = [
     color: 'bg-gray-50 border-gray-200',
     titleColor: 'text-gray-700',
     iconColor: 'text-gray-500',
-    priorities: ['medium', 'low'],
-    types: ['chat', 'journal', 'idea', 'note', 'todo'],
+    priorities: ['low'],
   },
 ];
 
@@ -49,9 +45,9 @@ export function QuadrantView() {
   const { getPeriodEntries } = useSummaryStore();
   const entries = getPeriodEntries();
 
-  const getQuadrantEntries = (priorities: string[], types: string[]) => {
-    return entries.filter(entry => 
-      priorities.includes(entry.priority) && types.includes(entry.type)
+  const getQuadrantEntries = (priorities: string[]) => {
+    return entries.filter(entry =>
+      priorities.includes(entry.priority)
     );
   };
 
@@ -65,9 +61,9 @@ export function QuadrantView() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {quadrantConfig.map((quadrant) => {
-          const quadrantEntries = getQuadrantEntries(quadrant.priorities, quadrant.types);
+          const quadrantEntries = getQuadrantEntries(quadrant.priorities);
           const Icon = quadrant.icon;
-          
+
           return (
             <div key={quadrant.id} className={`rounded-xl border-2 p-3 ${quadrant.color}`}>
               <div className="flex items-center gap-2 mb-3">
@@ -79,7 +75,7 @@ export function QuadrantView() {
                   {quadrantEntries.length}条
                 </span>
               </div>
-              
+
               {quadrantEntries.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-4">暂无内容</p>
               ) : (

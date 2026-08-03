@@ -59,8 +59,23 @@ export const STATUS_LABELS: Record<EntryStatus, string> = {
 };
 
 export const PRIORITY_LABELS: Record<string, string> = {
-  'urgent': '紧急',
-  'high': '重要',
-  'medium': '一般',
-  'low': '次要',
+  'urgent': 'Q1 紧急且重要',
+  'high': 'Q2 重要不紧急',
+  'medium': 'Q3 紧急不重要',
+  'low': 'Q4 不紧急不重要',
+};
+
+// 四象限定义 Q1-Q4
+export const QUADRANT_DEFS: Record<string, { id: string, name: string, label: string, color: string, bgColor: string }> = {
+  'urgent': { id: 'Q1', name: '紧急且重要', label: 'Q1', color: 'bg-red-500', bgColor: 'bg-red-100 text-red-700 border-red-300' },
+  'high': { id: 'Q2', name: '重要不紧急', label: 'Q2', color: 'bg-orange-500', bgColor: 'bg-orange-100 text-orange-700 border-orange-300' },
+  'medium': { id: 'Q3', name: '紧急不重要', label: 'Q3', color: 'bg-amber-500', bgColor: 'bg-amber-100 text-amber-700 border-amber-300' },
+  'low': { id: 'Q4', name: '不紧急不重要', label: 'Q4', color: 'bg-gray-500', bgColor: 'bg-gray-100 text-gray-600 border-gray-300' },
+};
+
+export const QUADRANT_PRIORITY_MAP: Record<string, string> = {
+  'Q1': 'urgent',
+  'Q2': 'high',
+  'Q3': 'medium',
+  'Q4': 'low',
 };

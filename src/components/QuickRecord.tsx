@@ -9,10 +9,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 const quadrants = [
-  { id: 'urgent', label: '紧急且重要', icon: AlertTriangle, color: 'bg-red-500', activeColor: 'bg-red-100 text-red-700 border-red-300' },
-  { id: 'high', label: '重要不紧急', icon: Target, color: 'bg-orange-500', activeColor: 'bg-orange-100 text-orange-700 border-orange-300' },
-  { id: 'medium', label: '紧急不重要', icon: Clock, color: 'bg-amber-500', activeColor: 'bg-amber-100 text-amber-700 border-amber-300' },
-  { id: 'low', label: '不紧急不重要', icon: MinusCircle, color: 'bg-gray-500', activeColor: 'bg-gray-100 text-gray-700 border-gray-300' },
+  { id: 'urgent', label: 'Q1 紧急且重要', icon: AlertTriangle, color: 'bg-red-500', activeColor: 'bg-red-100 text-red-700 border-red-300' },
+  { id: 'high', label: 'Q2 重要不紧急', icon: Target, color: 'bg-orange-500', activeColor: 'bg-orange-100 text-orange-700 border-orange-300' },
+  { id: 'medium', label: 'Q3 紧急不重要', icon: Clock, color: 'bg-amber-500', activeColor: 'bg-amber-100 text-amber-700 border-amber-300' },
+  { id: 'low', label: 'Q4 不紧急不重要', icon: MinusCircle, color: 'bg-gray-500', activeColor: 'bg-gray-100 text-gray-600 border-gray-300' },
 ] as const;
 
 export function QuickRecord() {
@@ -35,6 +35,7 @@ export function QuickRecord() {
 
     try {
       const priority = selectedPriority as 'urgent' | 'high' | 'medium' | 'low' | undefined;
+      // 修复：传递 priority 参数
       const success = await addEntry(content.trim(), activeCategory.target, activeCategory.id, priority);
       if (success) {
         setContent('');
@@ -74,7 +75,7 @@ export function QuickRecord() {
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                {option.label}
+                {option.label && option.label.startsWith('custom_') ? (option.id.startsWith('custom_') ? option.id.slice(7) : option.label.slice(7)) : option.label}
               </button>
             );
           })}

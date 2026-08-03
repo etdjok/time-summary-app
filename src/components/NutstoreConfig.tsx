@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings, X, Check, AlertCircle, FolderOpen, ChevronRight } from 'lucide-react';
-import { saveCredentials, clearCredentials, hasCredentials, testConnectionWithDetails, listRootFolders } from '../lib/nutstore';
+import { saveCredentials, clearCredentials, hasCredentials, testConnectionWithDetails, listRootFolders, getCredentials } from '../lib/nutstore';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 
 interface NutstoreConfigProps {
@@ -9,9 +9,19 @@ interface NutstoreConfigProps {
 
 export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
   const { nutstoreBasePath, setNutstoreBasePath, loadEntries } = useSummaryStore();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const existing = getCredentials();
+  const [username, setUsername] = useState(existing?.username || '');
+  const [password, setPassword] = useState(existing?.password || '');
   const [basePath, setBasePath] = useState(nutstoreBasePath);
+
+  // 组件挂载时再次回填（防止 localStorage 在会话中更新后未同步）
+  useEffect(() => {
+    const creds = getCredentials();
+    if (creds) {
+      if (!username) setUsername(creds.username);
+      if (!password) setPassword(creds.password);
+    }
+  }, []);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isConnected, setIsConnected] = useState(hasCredentials());

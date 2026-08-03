@@ -13,6 +13,8 @@ import { HeatmapView } from '../components/HeatmapView';
 import { AIAnalysis } from '../components/AIAnalysis';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { hasCredentials } from '../lib/nutstore';
+import { getPeriodForDate } from '../lib/dateUtils';
+import { syncCategoriesFromNutstore } from '../hooks/useCategories';
 
 export default function Home() {
   const [showConfig, setShowConfig] = useState(false);
@@ -30,12 +32,14 @@ export default function Home() {
 
     if (connected) {
       loadEntries();
+      // v1.18: 从坚果云同步分类配置
+      syncCategoriesFromNutstore();
     }
   }, [loadEntries]);
 
   const handleExport = () => {
     const data = {
-      version: '1.12',
+      version: '1.15',
       exportDate: new Date().toISOString(),
       entries: entries,
     };
@@ -43,7 +47,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `心光-导出-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `心光 - 导出-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -80,7 +84,13 @@ export default function Home() {
   };
 
   const handleSelectDate = (date: string) => {
-    // 选中日期后切换到列表视图
+    // 切换到该日的 day 视图，让列表展示该日条目
+    const { setPeriodType, setCurrentPeriod } = useSummaryStore.getState();
+    const targetDate = new Date(date + 'T00:00:00');
+    if (!isNaN(targetDate.getTime())) {
+      setPeriodType('day');
+      setCurrentPeriod(getPeriodForDate(targetDate, 'day'));
+    }
     setViewMode('list');
   };
 
@@ -90,7 +100,7 @@ export default function Home() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.12 · 你的时光记录与思考空间</p>
+            <p className="text-sm text-gray-500 mt-0.5">v1.18.2 · 你的时光记录与思考空间</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -106,34 +116,6 @@ export default function Home() {
               title="导入数据"
             >
               <Upload className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
-              title="列表视图"
-            >
-              <List className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('quadrant')}
-              className={`p-2.5 rounded-xl transition-all ${viewMode === 'quadrant' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
-              title="四象限视图"
-            >
-              <Grid3x3 className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('heatmap')}
-              className={`p-2.5 rounded-xl transition-all ${viewMode === 'heatmap' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
-              title="热力图视图"
-            >
-              <Calendar className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('ai')}
-              className={`p-2.5 rounded-xl transition-all ${viewMode === 'ai' ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm'}`}
-              title="AI智能分析"
-            >
-              <Brain className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowHelp(true)}
@@ -213,7 +195,54 @@ export default function Home() {
 
         <PeriodNavigation />
         <StatsCard onTypeClick={handleTypeClick} />
-        
+
+        <div className="flex items-center gap-1 bg-white rounded-xl shadow-sm p-1 mb-4">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+              viewMode === 'list'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            列表
+          </button>
+          <button
+            onClick={() => setViewMode('quadrant')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+              viewMode === 'quadrant'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
+            }`}
+          >
+            <Grid3x3 className="w-4 h-4" />
+            四象限
+          </button>
+          <button
+            onClick={() => setViewMode('heatmap')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+              viewMode === 'heatmap'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            热力图
+          </button>
+          <button
+            onClick={() => setViewMode('ai')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+              viewMode === 'ai'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
+            }`}
+          >
+            <Brain className="w-4 h-4" />
+            AI分析
+          </button>
+        </div>
+
         {viewMode === 'list' && <SummaryList initialTypeFilter={typeFilter} />}
         {viewMode === 'quadrant' && <QuadrantView />}
         {viewMode === 'heatmap' && <HeatmapView onSelectDate={handleSelectDate} />}

@@ -1,57 +1,58 @@
-# React + TypeScript + Vite
+﻿# 心光 (Xinguang) v1.18.2
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+个人时间管理与记录应用，基于 React + TypeScript + Vite 构建，支持坚果云 WebDAV 同步。
 
-Currently, two official plugins are available:
+## 功能特性
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 快速记录：支持自定义分类，无数量限制
+- 四象限管理：按紧急/重要程度分类任务
+- 热力图视图：可视化任务密度
+- 坚果云同步：跨设备数据同步
+- PWA 支持：可安装为离线应用
+- 每日固定任务：自动生成念佛早课/晚课等固定任务
 
-## Expanding the ESLint configuration
+## 技术栈
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- 前端：React 18 + TypeScript + Vite 6 + Tailwind CSS
+- 状态管理：Zustand
+- 后端：Node.js + Express
+- 云存储：坚果云 WebDAV API
+- PWA：vite-plugin-pwa
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## 项目结构
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+time-summary-app/
+- api/              后端服务 (server.js, worker.js)
+- src/components/   React 组件
+- src/hooks/        自定义 Hooks
+- src/lib/          工具库
+- src/pages/        页面
+- src/types/        类型定义
+- public/           静态资源
+- dist/             构建产物
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 部署说明
 
-export default tseslint.config({
-  extends: [
-    // other configs...
-    // Enable lint rules for React
-    reactX.configs['recommended-typescript'],
-    // Enable lint rules for React DOM
-    reactDom.configs.recommended,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+1. 安装依赖：npm install
+2. 开发模式：npm run dev
+3. 构建生产版本：npm run build
+4. 启动服务：node api/server.js
+
+## 坚果云配置
+
+1. 注册坚果云账号
+2. 获取应用密码（账户设置 -> 安全选项 -> 第三方应用管理）
+3. 在应用设置页面填入用户名、密码、同步目录
+
+## 版本历史
+
+- v1.18.2: 修复分类显示为 custom_xxx 的问题
+- v1.18.1: 分类配置同步到坚果云
+- v1.18: 自定义分类无数量限制
+- v1.17: 四象限视图、热力图视图
+- v1.16: 每日固定任务功能
+- v1.12: AI 智能分析、编辑时间戳
+
+## 作者
+
+GitHub: etdjok (https://github.com/etdjok)

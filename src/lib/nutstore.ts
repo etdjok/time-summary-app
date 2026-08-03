@@ -104,6 +104,14 @@ export async function appendToJournalMd(basePath: string, content: string): Prom
   return appendToFile(basePath, content, 'journal');
 }
 
+export async function appendToIdeaMd(basePath: string, content: string): Promise<boolean> {
+  return appendToFile(basePath, content, 'idea');
+}
+
+export async function appendToNoteMd(basePath: string, content: string): Promise<boolean> {
+  return appendToFile(basePath, content, 'note');
+}
+
 export async function testConnection(username: string, password: string, basePath: string): Promise<{ 
   success: boolean; 
   status?: number; 
@@ -260,7 +268,7 @@ export async function deleteFile(path: string): Promise<{
   }
 }
 
-export async function appendToFile(basePath: string, content: string, type: 'chat' | 'todo' | 'journal'): Promise<boolean> {
+export async function appendToFile(basePath: string, content: string, type: string): Promise<boolean> {
   const creds = getCredentials();
   if (!creds) {
     return false;
@@ -268,7 +276,7 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
 
   try {
     let filePath = '';
-    
+
     if (type === 'chat') {
       filePath = `${basePath}/Chat.md`;
     } else if (type === 'todo') {
@@ -278,6 +286,13 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       filePath = `${basePath}/journal/${year}.${month}.md`;
+    } else if (type === 'idea') {
+      filePath = `${basePath}/Idea.md`;
+    } else if (type === 'note') {
+      filePath = `${basePath}/Note.md`;
+    } else {
+      // 自定义分类：用 target 名作为文件名
+      filePath = `${basePath}/${type}.md`;
     }
 
     const readResponse = await fetch(`${API_BASE_URL}/read`, {
@@ -300,7 +315,7 @@ export async function appendToFile(basePath: string, content: string, type: 'cha
     const dateHeader = `## ${dateStr}`;
     
     let contentToAdd = content;
-    if (type === 'chat' || type === 'todo') {
+    if (type !== 'journal') {
       // 检查文件中是否已有今天的日期头
       if (!existingContent.includes(dateHeader)) {
         contentToAdd = `${dateHeader}\n${content}`;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
-import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
+import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, CheckSquare, Square } from 'lucide-react';
+import { MarkdownEntry, FILE_TYPE_LABELS, QUADRANT_DEFS } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
@@ -34,10 +34,10 @@ const priorityColors: Record<string, string> = {
 };
 
 const priorityLabels: Record<string, string> = {
-  urgent: '紧急',
-  high: '重要',
-  medium: '一般',
-  low: '次要',
+  urgent: 'Q1 紧急且重要',
+  high: 'Q2 重要不紧急',
+  medium: 'Q3 紧急不重要',
+  low: 'Q4 不紧急不重要',
 };
 
 interface EntryItemProps {
@@ -49,26 +49,29 @@ export function EntryItem({ entry }: EntryItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editContent, setEditContent] = useState('');
-  const [editType, setEditType] = useState(entry.type);
+  const [editType, setEditType] = useState(entry.categoryId || entry.type);
   const [editPriority, setEditPriority] = useState(entry.priority);
+  const [editCompleted, setEditCompleted] = useState(entry.completed || false);
   const [saving, setSaving] = useState(false);
   
   const { updateEntry, deleteEntry, loadEntries } = useSummaryStore();
   const { categories } = useCategories();
 
-  const isCompleted = entry.type === 'todo' && entry.completed;
-
-  // 获取条目显示类型（优先使用 categoryId）
+  const isCompleted = entry.completed || false;
   const displayType = entry.categoryId || entry.type;
 
-  // 获取类型标签
+  // v1.18.2: 显示时兜底，label 以 custom_ 开头时从 id 提取真实名称
   const getTypeLabel = (type: string): string => {
     const cat = categories.find(c => c.id === type);
-    if (cat) return cat.label;
+    if (cat) {
+      if (cat.label && cat.label.startsWith('custom_')) {
+        return cat.id.startsWith('custom_') ? cat.id.slice(7) : cat.label.slice(7);
+      }
+      return cat.label;
+    }
     return FILE_TYPE_LABELS[type] || type;
   };
 
-  // 获取类型图标
   const getTypeIcon = (type: string): React.ReactNode => {
     if (defaultTypeIcons[type]) return defaultTypeIcons[type];
     const cat = categories.find(c => c.id === type);
@@ -79,34 +82,30 @@ export function EntryItem({ entry }: EntryItemProps) {
     return <MessageSquare className="w-4 h-4" />;
   };
 
-  // 获取类型颜色
   const getTypeColor = (type: string): string => {
     if (defaultTypeColors[type]) return defaultTypeColors[type];
     const cat = categories.find(c => c.id === type);
-    if (cat) {
-      return `${cat.color} text-white`;
-    }
+    if (cat) return `${cat.color} text-white`;
     return 'bg-gray-100 text-gray-600';
   };
 
   const handleSaveEdit = async () => {
     setSaving(true);
-
-    // 获取当前日期时间
-    const now = new Date();
-    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    // 原始内容保留不变，修改内容另起一行并带上日期时间
+    
+    // 修复：保留原内容，新内容另起一行并标注编辑时的日期时间
     let contentToSave = entry.content;
     if (editContent.trim()) {
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       contentToSave = `${entry.content}\n${dateStr} ${timeStr} ${editContent.trim()}`;
     }
-
+    
     const success = await updateEntry(entry.id, {
       content: contentToSave,
       type: editType,
       priority: editPriority as any,
+      completed: editCompleted,
     });
     setSaving(false);
     
@@ -133,22 +132,30 @@ export function EntryItem({ entry }: EntryItemProps) {
 
   const handleCancelEdit = () => {
     setEditContent('');
-    setEditType(entry.type);
+    setEditType(entry.categoryId || entry.type);
     setEditPriority(entry.priority);
+    setEditCompleted(entry.completed || false);
     setIsEditing(false);
   };
 
-  // 构建类型选项列表（包括所有现有分类）
-  const typeOptions = categories.map(cat => ({
-    value: cat.id,
-    label: cat.label,
-  }));
+  // 快速切换完成状态
+  const handleToggleComplete = async () => {
+    const newCompleted = !entry.completed;
+    const success = await updateEntry(entry.id, { completed: newCompleted });
+    if (success) {
+      await loadEntries();
+    } else {
+      alert('状态更新失败');
+    }
+  };
+
+  const typeOptions = categories.map(cat => ({ value: cat.id, label: cat.label }));
 
   const priorityOptions = [
-    { value: 'urgent', label: '紧急' },
-    { value: 'high', label: '重要' },
-    { value: 'medium', label: '一般' },
-    { value: 'low', label: '次要' },
+    { value: 'urgent', label: 'Q1 紧急且重要' },
+    { value: 'high', label: 'Q2 重要不紧急' },
+    { value: 'medium', label: 'Q3 紧急不重要' },
+    { value: 'low', label: 'Q4 不紧急不重要' },
   ];
 
   return (
@@ -164,7 +171,6 @@ export function EntryItem({ entry }: EntryItemProps) {
 
         <div className="flex-1 min-w-0">
           {isEditing ? (
-            // 编辑模式
             <div className="space-y-3">
               <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-2 mb-2 whitespace-pre-wrap">
                 <span className="text-xs text-gray-400">原始内容：</span>
@@ -197,6 +203,19 @@ export function EntryItem({ entry }: EntryItemProps) {
                   ))}
                 </select>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditCompleted(!editCompleted)}
+                  className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-all ${
+                    editCompleted
+                      ? 'bg-green-100 text-green-700 border-green-200'
+                      : 'bg-gray-50 text-gray-500 border-gray-200'
+                  }`}
+                >
+                  {editCompleted ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                  {editCompleted ? '已完成' : '未完成'}
+                </button>
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveEdit}
@@ -217,16 +236,19 @@ export function EntryItem({ entry }: EntryItemProps) {
               </div>
             </div>
           ) : (
-            // 显示模式
             <>
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getTypeColor(displayType)}`}>
                   {getTypeLabel(displayType)}
                 </span>
                 
-                {entry.type === 'todo' && (
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${priorityColors[entry.priority]}`}>
-                    {priorityLabels[entry.priority]}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${priorityColors[entry.priority]}`}>
+                  {priorityLabels[entry.priority]}
+                </span>
+
+                {isCompleted && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                    已完成
                   </span>
                 )}
 
@@ -247,7 +269,7 @@ export function EntryItem({ entry }: EntryItemProps) {
                   </span>
                   <span className="text-xs text-gray-400 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {entry.date} {entry.time || ''}
+                    {entry.date || '未记录日期'} {entry.time || ''}
                   </span>
                 </div>
               </div>
@@ -267,8 +289,16 @@ export function EntryItem({ entry }: EntryItemProps) {
 
               <div className="flex items-center justify-between mt-1">
                 <div className="flex gap-1">
+                  {/* 完成状态切换 */}
                   <button
-                    onClick={() => setIsEditing(true)}
+                    onClick={handleToggleComplete}
+                    className={`p-1 transition-colors ${isCompleted ? 'text-green-500 hover:text-green-600' : 'text-gray-400 hover:text-green-500'}`}
+                    title={isCompleted ? '标记为未完成' : '标记为已完成'}
+                  >
+                    {isCompleted ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={() => { setEditContent(''); setIsEditing(true); }}
                     className="p-1 text-gray-400 hover:text-amber-500 transition-colors"
                     title="编辑"
                   >
@@ -294,7 +324,6 @@ export function EntryItem({ entry }: EntryItemProps) {
         </div>
       </div>
 
-      {/* 删除确认框 */}
       {showDeleteConfirm && (
         <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-sm text-red-700 mb-2">确定要删除这条记录吗？此操作不可撤销。</p>

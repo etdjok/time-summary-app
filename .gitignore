@@ -26,3 +26,16 @@ dist-ssr
 # 临时测试文件
 test-cors.html
 *.env
+# 备份目录（本地版本备份，不需要上传）
+.backup_*/
+
+# 备份文件
+*.bak*
+
+# 临时修复脚本（本地维护用）
+fix_*.py
+add_delete_feature.py
+
+# 临时文件
+*.tmp
+

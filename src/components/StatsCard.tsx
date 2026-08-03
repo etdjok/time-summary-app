@@ -36,10 +36,15 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
   // 显示所有类型，即使count=0
   const typeEntries = Object.entries(stats.byType);
 
-  // 获取分类标签
+  // v1.18.2: 获取分类标签，带 custom_ 兜底
   const getCategoryLabel = (type: string): string => {
     const cat = categories.find(c => c.id === type);
-    if (cat) return cat.label;
+    if (cat) {
+      if (cat.label && cat.label.startsWith('custom_')) {
+        return cat.id.startsWith('custom_') ? cat.id.slice(7) : cat.label.slice(7);
+      }
+      return cat.label;
+    }
     return FILE_TYPE_LABELS[type] || type;
   };
 

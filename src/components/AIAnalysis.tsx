@@ -5,10 +5,10 @@ import { useCategories } from '../hooks/useCategories';
 import { FILE_TYPE_LABELS, PERIOD_LABELS } from '../types';
 
 const priorityLabels: Record<string, string> = {
-  urgent: '紧急',
-  high: '重要',
-  medium: '一般',
-  low: '次要',
+  urgent: '紧急且重要',
+  high: '重要不紧急',
+  medium: '紧急不重要',
+  low: '不紧急不重要',
 };
 
 const priorityColors: Record<string, string> = {

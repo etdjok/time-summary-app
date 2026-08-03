@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { List, Filter, RefreshCw, Search, X, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
@@ -20,9 +20,13 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Sync with external filter changes
+  useEffect(() => {
+    setTypeFilter(initialTypeFilter);
+  }, [initialTypeFilter]);
+
   const entries = getPeriodEntries();
   
-  // 生成动态类型过滤器
   const typeFilters = [
     { value: 'all', label: '全部', icon: List },
     ...categories.map(cat => ({
@@ -32,12 +36,10 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
     })),
   ];
   
-  // 先按类型过滤（同时匹配 type 和 categoryId）
   const typeFilteredEntries = typeFilter === 'all' 
     ? entries 
     : entries.filter(e => e.type === typeFilter || e.categoryId === typeFilter);
   
-  // 再按搜索词过滤
   const filteredEntries = searchQuery.trim() === ''
     ? typeFilteredEntries
     : typeFilteredEntries.filter(e => 
@@ -45,7 +47,6 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
         e.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
       );
 
-  // 获取分类标签
   const getTypeLabel = (type: string): string => {
     const cat = categories.find(c => c.id === type);
     if (cat) return cat.label;
@@ -70,7 +71,6 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
         </button>
       </div>
 
-      {/* 搜索框 */}
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input

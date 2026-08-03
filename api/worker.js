@@ -211,10 +211,39 @@ export default {
       if (action === 'filesmd') {
         try {
           const allEntries = [];
-          const rootFiles = ['Chat.md', 'Later.md', 'Help.md', 'Readme.md'];
+          const rootFiles = ['Chat.md', 'Later.md', 'Help.md', 'Readme.md', 'Idea.md', 'Note.md'];
           const excludedFiles = ['help.md', 'readme.md', 'about.md'];
-          
-          for (const fileName of rootFiles) {
+
+          // v1.18: 先用 PROPFIND 列出 basePath 下所有 .md 文件（含自定义分类文件）
+          let allFiles = [...rootFiles];
+          try {
+            const propfindRes = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}${encodePath(basePath + '/')}`, {
+              username,
+              password,
+              method: 'PROPFIND',
+              headers: { Depth: '1' },
+            });
+            if (propfindRes.ok) {
+              const xmlText = await propfindRes.text();
+              const hrefRegex = /<(?:D|d):href>([^<]+\.md)<\/(?:D|d):href>/g;
+              let m;
+              const loaded = new Set(allFiles.map((f) => f.toLowerCase()));
+              while ((m = hrefRegex.exec(xmlText)) !== null) {
+                const href = m[1];
+                const fname = decodeURIComponent(href.split('/').pop() || '');
+                const low = fname.toLowerCase();
+                if (fname && !loaded.has(low) && !low.startsWith('_') && !excludedFiles.includes(low)) {
+                  allFiles.push(fname);
+                  loaded.add(low);
+                }
+              }
+              console.log(`[worker filesmd] PROPFIND 列出 ${allFiles.length} 个 md 文件`);
+            }
+          } catch (e) {
+            console.warn('[worker filesmd] PROPFIND 失败，仅加载默认:', e.message);
+          }
+
+          for (const fileName of allFiles) {
             if (excludedFiles.includes(fileName.toLowerCase())) continue;
             const encodedPath = encodePath(`${basePath}/${fileName}`);
             const fileResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}${encodedPath}`, {
@@ -227,7 +256,7 @@ export default {
               allEntries.push({ fileName, content });
             }
           }
-          
+
           const now = new Date();
           const year = now.getFullYear();
           const month = String(now.getMonth() + 1).padStart(2, '0');

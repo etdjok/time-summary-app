@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Lock, Pencil } from 'lucide-react';
 import { changePassword } from '../lib/auth';
-import { useCategories } from '../hooks/useCategories';
+import { useCategories, COLOR_OPTIONS, ICON_OPTIONS } from '../hooks/useCategories';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText,
@@ -19,10 +19,10 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
     removeCategory,
     updateCategory,
     resetCategories,
-    colorOptions,
-    iconOptions,
-    targetOptions,
   } = useCategories();
+
+  const colorOptions = COLOR_OPTIONS;
+  const iconOptions = ICON_OPTIONS;
 
   const [newLabel, setNewLabel] = useState('');
   const [newIcon, setNewIcon] = useState('Star');
@@ -41,7 +41,7 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
       label: newLabel.trim(),
       icon: newIcon,
       color: newColor,
-      target: newTarget,
+      target: newLabel.trim(),
     });
     setNewLabel('');
   };
@@ -51,11 +51,15 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
   const [editLabel, setEditLabel] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [editColor, setEditColor] = useState('');
-  const [editTarget, setEditTarget] = useState<'chat' | 'todo' | 'journal' | 'idea' | 'note'>('chat');
+  const [editTarget, setEditTarget] = useState<string>('chat');
 
+  // v1.18.2: 编辑时自动修正 label，从 id 提取真实名称
   const startEdit = (cat: any) => {
+    const fixedLabel = (cat.label && cat.label.startsWith('custom_'))
+      ? (cat.id.startsWith('custom_') ? cat.id.slice(7) : cat.label.slice(7))
+      : cat.label;
     setEditingId(cat.id);
-    setEditLabel(cat.label);
+    setEditLabel(fixedLabel);
     setEditIcon(cat.icon);
     setEditColor(cat.color);
     setEditTarget(cat.target);
@@ -152,15 +156,12 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
-                      <select
+                      <input
                         value={editTarget}
-                        onChange={(e) => setEditTarget(e.target.value as 'chat' | 'todo' | 'journal' | 'idea' | 'note')}
+                        onChange={(e) => setEditTarget(e.target.value)}
                         className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-amber-400"
-                      >
-                        {targetOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
+                        placeholder="文件名（不含.md）"
+                      />
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -192,7 +193,7 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-800">{cat.label}</p>
                     <p className="text-xs text-gray-400">
-                      {targetOptions.find((t) => t.value === cat.target)?.label}
+                      {cat.target}.md
                     </p>
                   </div>
                   <button
@@ -247,15 +248,9 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                 </select>
               </div>
 
-              <select
-                value={newTarget}
-                onChange={(e) => setNewTarget(e.target.value as 'chat' | 'todo' | 'journal' | 'idea' | 'note')}
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
-              >
-                {targetOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+                新分类将自动创建独立文件（{'{分类名}'}.md），与默认分类互不干扰
+              </div>
 
               <button
                 onClick={handleAdd}

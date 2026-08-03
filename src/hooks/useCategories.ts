@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { create } from 'zustand';
 
 const CATEGORIES_KEY = 'heartlight_categories';
 
@@ -7,7 +7,67 @@ export interface Category {
   label: string;
   icon: string;
   color: string;
-  target: 'chat' | 'todo' | 'journal' | 'idea' | 'note';
+  target: string;
+}
+
+// v1.18: 分类配置同步到坚果云
+const REMOTE_CATEGORIES_FILE = '_categories.json';
+let _syncInProgress = false;
+
+async function syncCategoriesToNutstore(categories: Category[]): Promise<void> {
+  if (_syncInProgress) return;
+  try {
+    _syncInProgress = true;
+    const credsRaw = localStorage.getItem('nutstore_credentials');
+    if (!credsRaw) return;
+    const creds = JSON.parse(credsRaw);
+    if (!creds.username || !creds.password) return;
+    const basePath = (localStorage.getItem('nutstore_base_path') || '').trim() || '/我的坚果云/笔记';
+    const filePath = `${basePath}/${REMOTE_CATEGORIES_FILE}`;
+    const response = await fetch('/api/nutstore/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: creds.username,
+        password: creds.password,
+        filePath,
+        content: JSON.stringify(categories, null, 2),
+      }),
+    });
+    if (!response.ok) {
+      console.warn('[categories] 同步到坚果云失败:', response.status);
+    } else {
+      console.log('[categories] 已同步到坚果云');
+    }
+  } catch (e) {
+    console.warn('[categories] 同步异常:', e);
+  } finally {
+    _syncInProgress = false;
+  }
+}
+
+export async function loadCategoriesFromNutstore(): Promise<Category[] | null> {
+  try {
+    const credsRaw = localStorage.getItem('nutstore_credentials');
+    if (!credsRaw) return null;
+    const creds = JSON.parse(credsRaw);
+    if (!creds.username || !creds.password) return null;
+    const basePath = (localStorage.getItem('nutstore_base_path') || '').trim() || '/我的坚果云/笔记';
+    const filePath = `${basePath}/${REMOTE_CATEGORIES_FILE}`;
+    const response = await fetch('/api/nutstore/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data.content) return null;
+    const parsed = JSON.parse(data.content);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (e) {
+    console.warn('[categories] 从坚果云加载失败:', e);
+    return null;
+  }
 }
 
 const DEFAULT_CATEGORIES: Category[] = [
@@ -54,8 +114,8 @@ const TARGET_OPTIONS = [
   { label: '收集箱 (Chat.md)', value: 'chat' },
   { label: '待办 (Later.md)', value: 'todo' },
   { label: '日记 (journal)', value: 'journal' },
-  { label: '想法 (@idea)', value: 'idea' },
-  { label: '笔记 (@note)', value: 'note' },
+  { label: '想法 (Idea.md)', value: 'idea' },
+  { label: '笔记 (Note.md)', value: 'note' },
 ];
 
 function loadCategories(): Category[] {
@@ -63,13 +123,17 @@ function loadCategories(): Category[] {
     const raw = localStorage.getItem(CATEGORIES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Auto-migrate: fix old categories where idea/note had target 'chat'
       const migrated = parsed.map((cat: Category) => {
         if (cat.id === 'idea' && cat.target === 'chat') return { ...cat, target: 'idea' as const };
         if (cat.id === 'note' && cat.target === 'chat') return { ...cat, target: 'note' as const };
         return cat;
       });
-      // Save migrated data back
+      // v1.18.2: 自动修正 label 为 custom_xxx 的条目，从 id 提取真实名称
+      migrated.forEach((c: Category) => {
+        if (c.label && c.label.startsWith('custom_')) {
+          c.label = c.id.startsWith('custom_') ? c.id.slice(7) : c.label.slice(7);
+        }
+      });
       localStorage.setItem(CATEGORIES_KEY, JSON.stringify(migrated));
       return migrated;
     }
@@ -80,43 +144,127 @@ function loadCategories(): Category[] {
 }
 
 function saveCategories(categories: Category[]) {
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  // v1.18.2: 写入前自动修正 label，从 id 提取真实名称
+  const fixed = categories.map((c: Category) => {
+    if (c.label && c.label.startsWith('custom_')) {
+      return { ...c, label: c.id.startsWith('custom_') ? c.id.slice(7) : c.label.slice(7) };
+    }
+    return c;
+  });
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(fixed));
+  // 同步到坚果云（异步，不阻塞）
+  syncCategoriesToNutstore(fixed);
 }
 
-export function useCategories() {
-  const [categories, setCategories] = useState<Category[]>(loadCategories);
+interface CategoryStore {
+  categories: Category[];
+  addCategory: (category: Omit<Category, 'id'>) => void;
+  removeCategory: (id: string) => void;
+  updateCategory: (id: string, updates: Partial<Omit<Category, 'id'>>) => void;
+  resetCategories: () => void;
+}
 
-  useEffect(() => {
-    saveCategories(categories);
-  }, [categories]);
-
-  const addCategory = useCallback((category: Omit<Category, 'id'>) => {
-    const id = `custom_${Date.now()}`;
-    setCategories((prev) => [...prev, { ...category, id }]);
-  }, []);
-
-  const removeCategory = useCallback((id: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-  }, []);
-
-  const updateCategory = useCallback((id: string, updates: Partial<Omit<Category, 'id'>>) => {
-    setCategories((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
-    );
-  }, []);
-
-  const resetCategories = useCallback(() => {
-    setCategories([...DEFAULT_CATEGORIES]);
-  }, []);
+export const useCategories = create<CategoryStore>()((set) => {
+  const initial = loadCategories();
+  saveCategories(initial);
 
   return {
-    categories,
-    addCategory,
-    removeCategory,
-    updateCategory,
-    resetCategories,
-    colorOptions: COLOR_OPTIONS,
-    iconOptions: ICON_OPTIONS,
-    targetOptions: TARGET_OPTIONS,
+    categories: initial,
+
+    addCategory: (category) => {
+      // v1.18: id 用 target（稳定标识），跨设备可识别
+      const target = category.target || category.label;
+      const id = `custom_${target}`;
+      set((state) => {
+        // 避免 id 重复
+        if (state.categories.some((c) => c.id === id)) {
+          return state;
+        }
+        const updated = [...state.categories, { ...category, id, target }];
+        saveCategories(updated);
+        return { categories: updated };
+      });
+    },
+
+    removeCategory: (id) => {
+      set((state) => {
+        const updated = state.categories.filter((c) => c.id !== id);
+        saveCategories(updated);
+        return { categories: updated };
+      });
+    },
+
+    updateCategory: (id, updates) => {
+      set((state) => {
+        const updated = state.categories.map((c) =>
+          c.id === id ? { ...c, ...updates } : c
+        );
+        saveCategories(updated);
+        return { categories: updated };
+      });
+    },
+
+    resetCategories: () => {
+      const defaults = [...DEFAULT_CATEGORIES];
+      saveCategories(defaults);
+      set({ categories: defaults });
+    },
   };
+});
+
+// v1.18: 异步从坚果云加载分类配置并合并到本地
+export async function syncCategoriesFromNutstore(): Promise<void> {
+  try {
+    const remote = await loadCategoriesFromNutstore();
+    if (!remote || remote.length === 0) return;
+
+    const localRaw = localStorage.getItem(CATEGORIES_KEY);
+    let local: Category[] = [...DEFAULT_CATEGORIES];
+    if (localRaw) {
+      try {
+        local = JSON.parse(localRaw);
+      } catch { /* ignore */ }
+    }
+
+    // 合并：以 id 去重，远程分类优先
+    const localById = new Map(local.map((c) => [c.id, c]));
+    for (const r of remote) {
+      if (!localById.has(r.id)) {
+        local.push(r);
+      } else {
+        const idx = local.findIndex((c) => c.id === r.id);
+        if (idx >= 0) local[idx] = r;
+      }
+    }
+    // v1.18.2: 自动修正 label 为 custom_xxx 的条目，从 id 提取真实名称
+    local.forEach((c: Category) => {
+      if (c.label && c.label.startsWith('custom_')) {
+        c.label = c.id.startsWith('custom_') ? c.id.slice(7) : c.label.slice(7);
+      }
+    });
+    // 把修正后的写回坚果云，彻底修复历史数据
+    try {
+      const credsRaw = localStorage.getItem('nutstore_credentials');
+      if (credsRaw) {
+        const creds = JSON.parse(credsRaw);
+        const bp = (localStorage.getItem('nutstore_base_path') || '').trim() || '/我的坚果云/笔记';
+        fetch('/api/nutstore/write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: creds.username, password: creds.password,
+            filePath: `${bp}/_categories.json`,
+            content: JSON.stringify(local, null, 2),
+          }),
+        });
+      }
+    } catch { /* ignore */ }
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(local));
+    useCategories.setState({ categories: local });
+    console.log(`[categories] 已从坚果云同步 ${remote.length} 个分类，本地共 ${local.length} 个`);
+  } catch (e) {
+    console.warn('[categories] 从坚果云同步合并失败:', e);
+  }
 }
+
+export { COLOR_OPTIONS, ICON_OPTIONS, TARGET_OPTIONS };

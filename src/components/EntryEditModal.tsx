@@ -17,10 +17,10 @@ const typeOptions = [
 ];
 
 const priorityOptions = [
-  { value: 'urgent' as const, label: '紧急', color: 'bg-red-100 text-red-700 border-red-200' },
-  { value: 'high' as const, label: '重要', color: 'bg-orange-100 text-orange-700 border-orange-200' },
-  { value: 'medium' as const, label: '一般', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  { value: 'low' as const, label: '次要', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+  { value: 'urgent' as const, label: 'Q1 紧急且重要', color: 'bg-red-100 text-red-700 border-red-300' },
+  { value: 'high' as const, label: 'Q2 重要不紧急', color: 'bg-orange-100 text-orange-700 border-orange-300' },
+  { value: 'medium' as const, label: 'Q3 紧急不重要', color: 'bg-amber-100 text-amber-700 border-amber-300' },
+  { value: 'low' as const, label: 'Q4 不紧急不重要', color: 'bg-gray-100 text-gray-600 border-gray-300' },
 ];
 
 export function EntryEditModal({ entry, onClose }: EntryEditModalProps) {
@@ -39,7 +39,7 @@ export function EntryEditModal({ entry, onClose }: EntryEditModalProps) {
     setError('');
 
     try {
-      const result = await updateEntry(entry, {
+      const success = await updateEntry(entry.id, {
         content: content.trim(),
         type,
         priority,
@@ -47,11 +47,11 @@ export function EntryEditModal({ entry, onClose }: EntryEditModalProps) {
         completed: type === 'todo' ? completed : undefined,
       });
 
-      if (result.success) {
+      if (success) {
         loadEntries();
         onClose();
       } else {
-        setError(result.error || '保存失败，请稍后重试');
+        setError('保存失败，请稍后重试');
       }
     } catch (err) {
       setError(`保存出错: ${err instanceof Error ? err.message : '未知错误'}`);

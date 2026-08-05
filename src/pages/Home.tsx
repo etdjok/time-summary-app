@@ -100,7 +100,7 @@ export default function Home() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.18.2 · 你的时光记录与思考空间</p>
+            <p className="text-sm text-gray-500 mt-0.5">v1.18.4 · 你的时光记录与思考空间</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button

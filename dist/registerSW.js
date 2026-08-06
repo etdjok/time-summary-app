@@ -1,1 +1,1 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('./sw.js', { scope: './' })})}
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('./sw.js?v=18f', { scope: './' }).then(reg => {if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'})})})}

@@ -1,4 +1,4 @@
-﻿import { BarChart3, CheckCircle, FileText, Lightbulb, BookOpen, MessageSquare, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
+import { BarChart3, CheckCircle, FileText, Lightbulb, BookOpen, MessageSquare, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
 import { FILE_TYPE_LABELS } from '../types';
@@ -26,19 +26,17 @@ const defaultIcons: Record<string, React.ReactNode> = {
 
 interface StatsCardProps {
   onTypeClick?: (type: string) => void;
+  compact?: boolean;
 }
 
-export function StatsCard({ onTypeClick }: StatsCardProps) {
+export function StatsCard({ onTypeClick, compact = false }: StatsCardProps) {
   const { getStats } = useSummaryStore();
   const { categories } = useCategories();
   const stats = getStats();
 
-  // 显示所有类型，即使count=0
   const typeEntries = Object.entries(stats.byType);
 
-  // v1.18.2: 获取分类标签，带 custom_ 兜底
   const getCategoryLabel = (type: string): string => {
-    // 先修正 custom_ 前缀
     const cleanType = type && type.startsWith('custom_') ? type.slice(7) : type;
     const cat = categories.find(c => c.id === type);
     if (cat) {
@@ -47,14 +45,12 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
       }
       return cat.label;
     }
-    // 找不到分类时，也从 id 中提取真实名称
     if (type && type.startsWith('custom_')) {
       return type.slice(7);
     }
     return FILE_TYPE_LABELS[type] || cleanType;
   };
 
-  // 获取分类图标
   const getCategoryIcon = (type: string): React.ReactNode => {
     if (defaultIcons[type]) return defaultIcons[type];
     const cat = categories.find(c => c.id === type);
@@ -65,7 +61,6 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
     return <MessageSquare className="w-4 h-4" />;
   };
 
-  // 获取分类颜色
   const getCategoryColor = (type: string): string => {
     if (typeColors[type]) return typeColors[type];
     const cat = categories.find(c => c.id === type);
@@ -80,6 +75,40 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
       onTypeClick(type);
     }
   };
+
+  if (compact) {
+    return (
+      <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm p-3 mb-3">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-1">
+            <BarChart3 className="w-4 h-4 text-amber-500" />
+            <span className="text-sm font-medium text-gray-700">{stats.total} 条记录</span>
+          </div>
+          {stats.completed > 0 && (
+            <div className="flex items-center gap-1">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <span className="text-sm font-medium text-green-600">{stats.completed} 已完成</span>
+            </div>
+          )}
+        </div>
+        {typeEntries.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {typeEntries.map(([type, count]) => (
+              <button
+                key={type}
+                onClick={() => handleTypeClick(type)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors ${getCategoryColor(type)}`}
+              >
+                {getCategoryIcon(type)}
+                <span>{getCategoryLabel(type)}</span>
+                <span className="font-medium">{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 mb-4">

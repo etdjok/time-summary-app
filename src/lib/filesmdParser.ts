@@ -1,4 +1,4 @@
-import { MarkdownEntry } from '../types';
+﻿import { MarkdownEntry } from '../types';
 
 const formatDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -45,6 +45,9 @@ function extractCategoryId(content: string): string | null {
 function isNewEntryLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return true; // 空行视为分隔
+  // 以日期时间戳开头的行是编辑延续行，不是新条目
+  // 格式：YYYY-MM-DD HH:MM 或 YYYY/MM/DD HH:MM
+  if (trimmed.match(/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/)) return false;
   if (trimmed.match(/^##\s/)) return true; // 日期头
   if (trimmed.match(/^###?\s/)) return true; // 子标题
   if (trimmed.match(/^\d{1,2}:\d{2}\s/)) return true; // 时间戳开头
@@ -102,7 +105,9 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
     // 待办标记开头 -> 新条目
     const isTodoStart = trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]') || trimmed.startsWith('* [ ]') || trimmed.startsWith('* [x]');
 
-    if (timeMatch || isTodoStart) {
+    const hasDateTimeStamp = /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmed);
+    const isEditLine = hasDateTimeStamp;
+    if (!isEditLine && (timeMatch || isTodoStart)) {
       if (timeMatch) currentTime = timeMatch[1];
 
       const contentToParse = timeMatch
@@ -194,7 +199,9 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
     const contentToParse = timeMatch ? trimmed.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '') : trimmed;
 
     if (contentToParse && !contentToParse.startsWith('#') && contentToParse.length > 0) {
-      if (timeMatch || !isNewEntryLine(trimmed)) {
+      const hasDateTimeStampJournal = /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmed);
+      const isEditLineJournal = hasDateTimeStampJournal;
+      if (!isEditLineJournal && (timeMatch || !isNewEntryLine(trimmed))) {
         if (timeMatch) {
           // 新条目
           const categoryId = extractCategoryId(contentToParse);
@@ -249,7 +256,9 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
                    trimmed.startsWith('* [ ]') || trimmed.startsWith('* [x]') ||
                    trimmed.startsWith('- ') || trimmed.startsWith('* ');
 
-    if (isTodo || trimmed.match(/^\d+\./)) {
+    const hasDateTimeStampTodo = /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmed);
+    const isEditLineTodo = hasDateTimeStampTodo;
+    if (!isEditLineTodo && (isTodo || trimmed.match(/^\d+\./))) {
       const isCompleted = trimmed.startsWith('- [x]') || trimmed.startsWith('* [x]');
 
       let cleanContent = trimmed

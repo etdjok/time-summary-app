@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import { parseStringPromise } from 'xml2js';
 import { fileURLToPath } from 'url';
@@ -470,7 +470,14 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.join(DIST_DIR, 'index.html'));
+  const url = req.url;
+  if (url === '/sw.js' || url === '/registerSW.js' || url.startsWith('/assets/')) {
+    express.static(DIST_DIR)(req, res, () => {
+      res.sendFile(path.join(DIST_DIR, 'index.html'));
+    });
+  } else {
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {

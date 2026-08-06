@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, CheckSquare, Square } from 'lucide-react';
 import { MarkdownEntry, FILE_TYPE_LABELS, QUADRANT_DEFS } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -60,9 +60,7 @@ export function EntryItem({ entry }: EntryItemProps) {
   const isCompleted = entry.completed || false;
   const displayType = entry.categoryId || entry.type;
 
-  // v1.18.2: 显示时兜底，label 以 custom_ 开头时从 id 提取真实名称
   const getTypeLabel = (type: string): string => {
-    // 先修正 custom_ 前缀
     const cleanType = type && type.startsWith('custom_') ? type.slice(7) : type;
     const cat = categories.find(c => c.id === type);
     if (cat) {
@@ -71,7 +69,6 @@ export function EntryItem({ entry }: EntryItemProps) {
       }
       return cat.label;
     }
-    // 找不到分类时，也从 id 中提取真实名称
     if (type && type.startsWith('custom_')) {
       return type.slice(7);
     }
@@ -98,17 +95,8 @@ export function EntryItem({ entry }: EntryItemProps) {
   const handleSaveEdit = async () => {
     setSaving(true);
     
-    // 修复：保留原内容，新内容另起一行并标注编辑时的日期时间
-    let contentToSave = entry.content;
-    if (editContent.trim()) {
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      contentToSave = `${entry.content}\n${dateStr} ${timeStr} ${editContent.trim()}`;
-    }
-    
     const success = await updateEntry(entry.id, {
-      content: contentToSave,
+      content: editContent.trim(),
       type: editType,
       priority: editPriority as any,
       completed: editCompleted,
@@ -144,7 +132,6 @@ export function EntryItem({ entry }: EntryItemProps) {
     setIsEditing(false);
   };
 
-  // 快速切换完成状态
   const handleToggleComplete = async () => {
     const newCompleted = !entry.completed;
     const success = await updateEntry(entry.id, { completed: newCompleted });
@@ -285,17 +272,32 @@ export function EntryItem({ entry }: EntryItemProps) {
                 onClick={() => setIsExpanded(!isExpanded)}
               >
                 {!isExpanded ? (
-                  <p className="line-clamp-2">{entry.content}</p>
+                  <div className="space-y-1">
+                    {(() => {
+                      const lines = entry.content.split('\n');
+                      const editLineCount = lines.filter(l => /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(l.trim())).length;
+                      const displayLines = editLineCount > 0 ? lines.slice(0, 1) : lines.slice(0, 3);
+                      return (
+                        <>
+                          <div className="whitespace-pre-line">{displayLines.join('\n')}</div>
+                          {editLineCount > 0 && (
+                            <p className="text-xs text-gray-400">
+                              含 {editLineCount} 条编辑记录 {isExpanded ? '（点击收起）' : '（点击展开）'}
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 ) : (
-                  <div className="bg-gray-50 rounded-lg p-3 -mx-2">
-                    <MarkdownPreview content={entry.content} />
+                  <div className="bg-gray-50 rounded-lg p-3 -mx-2 whitespace-pre-line text-gray-700">
+                    {entry.content}
                   </div>
                 )}
               </div>
 
               <div className="flex items-center justify-between mt-1">
                 <div className="flex gap-1">
-                  {/* 完成状态切换 */}
                   <button
                     onClick={handleToggleComplete}
                     className={`p-1 transition-colors ${isCompleted ? 'text-green-500 hover:text-green-600' : 'text-gray-400 hover:text-green-500'}`}

@@ -33,7 +33,6 @@ interface SummaryStore {
   };
 }
 
-// v1.18: 模块级 attachPriority - #priority 只追加到首行末尾，续行不带 tag
 function attachPriority(text: string, priority: string): string {
   if (!text.includes('\n')) {
     return `${text} #${priority}`;
@@ -43,7 +42,6 @@ function attachPriority(text: string, priority: string): string {
   return lines.join('\n');
 }
 
-// 根据 sourceFile 构建正确的坚果云文件路径
 function buildFilePath(basePath: string, sourceFile: string): string {
   const lower = sourceFile.toLowerCase();
   if (lower === 'chat.md') return `${basePath}/Chat.md`;
@@ -52,6 +50,63 @@ function buildFilePath(basePath: string, sourceFile: string): string {
   if (lower === 'note.md') return `${basePath}/Note.md`;
   if (lower.includes('journal') || lower.match(/\d{4}\.\d{2}/)) return `${basePath}/journal/${sourceFile}`;
   return `${basePath}/${sourceFile}`;
+}
+
+function normTime(t?: string): string {
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t;
+}
+
+function normContent(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+function isNewEntryLine(l: string): boolean {
+  const t = l.trim();
+  if (!t) return true;
+  if (t.match(/^##\s/)) return true;
+  if (t.match(/^###?\s/)) return true;
+  if (t.match(/^\d{1,2}:\d{2}\s/)) return true;
+  if (t.match(/^[-*]\s*\[[x ]\]/)) return true;
+  if (t.match(/^[-*]\s+/)) return true;
+  if (t.match(/^\d+\.\s/)) return true;
+  return false;
+}
+
+// 判断一行是否可能匹配目标条目（通过内容+时间双匹配）
+function lineMatchesEntry(
+  line: string,
+  entryTime: string,
+  matchContent: string
+): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+
+  // 模式1: 带时间戳的条目
+  const timeMatch = trimmed.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
+  const todoMatch = trimmed.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
+
+  if (timeMatch) {
+    const [, time, fileContent] = timeMatch;
+    const timeNorm = normTime(time);
+    if ((!entryTime || timeNorm === entryTime) && normContent(fileContent).includes(matchContent)) {
+      return true;
+    }
+  } else if (todoMatch) {
+    const [, , time, fileContent] = todoMatch;
+    const timeNorm = normTime(time);
+    if ((!entryTime || timeNorm === entryTime) && normContent(fileContent).includes(matchContent)) {
+      return true;
+    }
+  } else {
+    // 模式2: 无时间戳的条目（仅内容匹配）
+    if (normContent(trimmed).includes(matchContent)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
@@ -106,7 +161,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       case 'month': prevDate = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1); break;
       case 'quarter': prevDate = new Date(startDate.getFullYear(), startDate.getMonth() - 3, 1); break;
       case 'half-year': prevDate = new Date(startDate.getFullYear(), startDate.getMonth() - 6, 1); break;
-      case 'year': prevDate = new Date(startDate.getFullYear() - 1, 0, 1); break;
+      case 'year': prevDate = new Date(startDate.getFullYear() - 1, 0); break;
       default: prevDate = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
     }
     set({ currentPeriod: getPeriodForDate(prevDate, type) });
@@ -135,7 +190,6 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     const catMarker = categoryId ? `@cat:${categoryId} ` : '';
-    // v1.18: 使用 attachPriority，#priority 加到首行而非整个 content 末尾
     const contentWithPriority = priority
       ? attachPriority(content, priority)
       : content;
@@ -145,7 +199,6 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       formattedContent = `- [ ] ${formattedContent}`;
     }
 
-    // 每种分类写入独立文件
     switch (target) {
       case 'todo':
         success = await appendToTodoMd(basePath, formattedContent);
@@ -163,7 +216,6 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
         success = await appendToChatMd(basePath, formattedContent);
         break;
       default:
-        // 自定义分类：用 target 名作为文件名
         success = await appendToFile(basePath, formattedContent, target);
         break;
     }
@@ -184,62 +236,21 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const displayType = updates.type || entry.categoryId || entry.type;
     const categoryMarker = displayType ? `@cat:${displayType} ` : '';
 
-    // 修复 v1.17：使用完整 content 第一行匹配（不截断），并对空白做归一化以与文件原文一致
     const contentFirstLine = (entry.content.split('\n')[0] || '').trim();
     const matchContent = contentFirstLine.replace(/\s+/g, ' ');
-    // 时间归一化（"9:30" -> "09:30"），用于和文件中可能补零的时间比较
-    const normTime = (t?: string): string => {
-      if (!t) return '';
-      const m = t.match(/^(\d{1,2}):(\d{2})$/);
-      return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t;
-    };
     const entryTimeNorm = normTime(entry.time);
 
     const lines = readResult.content.split('\n');
     const updatedLines: string[] = [];
 
-    const isNewEntry = (l: string): boolean => {
-      const t = l.trim();
-      if (!t) return true;
-      if (t.match(/^##\s/)) return true;
-      if (t.match(/^###?\s/)) return true;
-      if (t.match(/^\d{1,2}:\d{2}\s/)) return true;
-      if (t.match(/^[-*]\s*\[[x ]\]/)) return true;
-      if (t.match(/^[-*]\s+/)) return true;
-      if (t.match(/^\d+\.\s/)) return true;
-      return false;
-    };
-
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
-      // 修复 v1.17：时间正则统一为 1-2 位小时（与解析器一致），时间比较前做 padStart 归一化
-      const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
-      const todoMatch = line.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
 
-      let isTargetLine = false;
-
-      // 对文件行内容也做空白归一化，保证与 matchContent 一致
-      const normContent = (s: string) => s.replace(/\s+/g, ' ').trim();
-
-      if (todoMatch) {
-        const [, check, time, fileContent] = todoMatch;
-        const timeNorm = normTime(time);
-        // entry.time 可能是 undefined（无时间前缀的条目），此时只用内容匹配
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(fileContent).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      } else if (timeMatch) {
-        const [, time, fileContent] = timeMatch;
-        const timeNorm = normTime(time);
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(fileContent).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      }
-
-      if (isTargetLine) {
+      if (lineMatchesEntry(line, entryTimeNorm, matchContent)) {
+        // 收集所有延续行
         let blockEnd = i + 1;
-        while (blockEnd < lines.length && !isNewEntry(lines[blockEnd])) {
+        while (blockEnd < lines.length && !isNewEntryLine(lines[blockEnd])) {
           blockEnd++;
         }
 
@@ -249,7 +260,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
 
         let newLine: string;
         const entryTimeStr = entry.time ? `${entry.time} ` : '';
-        if (todoMatch) {
+        if (line.trim().startsWith('- [x]') || line.trim().startsWith('- [ ]') ||
+            line.trim().startsWith('* [x]') || line.trim().startsWith('* [ ]')) {
           const checkMark = completed ? 'x' : ' ';
           newLine = `- [${checkMark}] ${entryTimeStr}${categoryMarker}${attachPriority(newContent, newPriority)}`;
         } else {
@@ -289,60 +301,21 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const readResult = await readFile(filePath);
     if (!readResult.success || !readResult.content) return false;
 
-    // 修复 v1.17：使用完整 content 第一行匹配（不截断），并对空白做归一化
     const contentFirstLine = (entry.content.split('\n')[0] || '').trim();
     const matchContent = contentFirstLine.replace(/\s+/g, ' ');
-    const normTime = (t?: string): string => {
-      if (!t) return '';
-      const m = t.match(/^(\d{1,2}):(\d{2})$/);
-      return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t;
-    };
     const entryTimeNorm = normTime(entry.time);
 
     const lines = readResult.content.split('\n');
     const updatedLines: string[] = [];
-    
-    const isNewEntry = (l: string): boolean => {
-      const t = l.trim();
-      if (!t) return true;
-      if (t.match(/^##\s/)) return true;
-      if (t.match(/^###?\s/)) return true;
-      if (t.match(/^\d{1,2}:\d{2}\s/)) return true;
-      if (t.match(/^[-*]\s*\[[x ]\]/)) return true;
-      if (t.match(/^[-*]\s+/)) return true;
-      if (t.match(/^\d+\.\s/)) return true;
-      return false;
-    };
 
     let i = 0;
     let deleted = false;
     while (i < lines.length) {
       const line = lines[i];
-      // 修复 v1.17：时间正则统一为 1-2 位小时，时间比较前做 padStart 归一化
-      const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
-      const todoMatch = line.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
-      
-      let isTargetLine = false;
-      
-      const normContent = (s: string) => s.replace(/\s+/g, ' ').trim();
-      
-      if (todoMatch) {
-        const [, , time, content] = todoMatch;
-        const timeNorm = normTime(time);
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(content).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      } else if (timeMatch) {
-        const [, time, content] = timeMatch;
-        const timeNorm = normTime(time);
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(content).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      }
-      
-      if (isTargetLine && !deleted) {
+
+      if (lineMatchesEntry(line, entryTimeNorm, matchContent) && !deleted) {
         let blockEnd = i + 1;
-        while (blockEnd < lines.length && !isNewEntry(lines[blockEnd])) {
+        while (blockEnd < lines.length && !isNewEntryLine(lines[blockEnd])) {
           blockEnd++;
         }
         i = blockEnd;
@@ -380,7 +353,6 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     
     const today = new Date().toISOString().split('T')[0];
     const todayDate = new Date(today);
-    // v1.18.3: 无日期条目视为今天的记录，只要今天在当前周期范围内就显示
     const todayInPeriod = todayDate >= start && todayDate <= end;
     
     return entries
@@ -391,11 +363,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
         const entryDate = new Date(entry.date);
         return entryDate >= start && entryDate <= end;
       })
-      // 修复：按日期和时间降序排序（最新在前）
       .sort((a, b) => {
         const dateA = new Date(`${a.date || today} ${a.time || '00:00'}`);
         const dateB = new Date(`${b.date || today} ${b.time || '00:00'}`);
-        return dateB.getTime() - dateA.getTime(); // 降序：最新的在前
+        return dateB.getTime() - dateA.getTime();
       });
   },
 
@@ -420,6 +391,11 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       if (entry.completed) completed++;
     });
 
-    return { total: entries.length, byType, byPriority, completed };
+    return {
+      total: entries.length,
+      byType,
+      byPriority,
+      completed,
+    };
   },
 }));

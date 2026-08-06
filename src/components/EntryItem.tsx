@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, CheckSquare, Square } from 'lucide-react';
-import { MarkdownEntry, FILE_TYPE_LABELS, QUADRANT_DEFS } from '../types';
+import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, CheckSquare, Square, History } from 'lucide-react';
 import { MarkdownPreview } from './MarkdownPreview';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
@@ -44,6 +43,25 @@ interface EntryItemProps {
   entry: MarkdownEntry;
 }
 
+// 解析内容中以 YYYY-MM-DD HH:mm 开头的编辑历史行
+function parseContentLines(content: string): { original: string; edits: { date: string; time: string; text: string }[] } {
+  const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const edits: { date: string; time: string; text: string }[] = [];
+  let original = lines[0] || '';
+
+  for (let i = 1; i < lines.length; i++) {
+    const match = lines[i].match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$/);
+    if (match) {
+      edits.push({ date: match[1], time: match[2], text: match[3] });
+    } else {
+      // 非编辑历史行，附加到原文
+      original += '\n' + lines[i];
+    }
+  }
+
+  return { original, edits };
+}
+
 export function EntryItem({ entry }: EntryItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -60,7 +78,9 @@ export function EntryItem({ entry }: EntryItemProps) {
   const isCompleted = entry.completed || false;
   const displayType = entry.categoryId || entry.type;
 
-  // v1.18.2: 显示时兜底，label 以 custom_ 开头时从 id 提取真实名称
+  // 解析多行内容，分离原文和编辑历史
+  const { original, edits } = parseContentLines(entry.content);
+
   const getTypeLabel = (type: string): string => {
     const cat = categories.find(c => c.id === type);
     if (cat) {
@@ -92,7 +112,6 @@ export function EntryItem({ entry }: EntryItemProps) {
   const handleSaveEdit = async () => {
     setSaving(true);
     
-    // 修复：保留原内容，新内容另起一行并标注编辑时的日期时间
     let contentToSave = entry.content;
     if (editContent.trim()) {
       const now = new Date();
@@ -138,7 +157,6 @@ export function EntryItem({ entry }: EntryItemProps) {
     setIsEditing(false);
   };
 
-  // 快速切换完成状态
   const handleToggleComplete = async () => {
     const newCompleted = !entry.completed;
     const success = await updateEntry(entry.id, { completed: newCompleted });
@@ -158,6 +176,14 @@ export function EntryItem({ entry }: EntryItemProps) {
     { value: 'low', label: 'Q4 不紧急不重要' },
   ];
 
+  // 格式化日期显示
+  const formatDisplayDate = () => {
+    const date = entry.date || '';
+    const time = entry.time || '';
+    if (!date && !time) return '历史记录';
+    return `${date}${time ? ' ' + time : ''}`;
+  };
+
   return (
     <div
       className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-2 transition-all ${
@@ -172,9 +198,22 @@ export function EntryItem({ entry }: EntryItemProps) {
         <div className="flex-1 min-w-0">
           {isEditing ? (
             <div className="space-y-3">
-              <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-2 mb-2 whitespace-pre-wrap">
-                <span className="text-xs text-gray-400">原始内容：</span>
-                {entry.content}
+              <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-2 mb-2 whitespace-pre-wrap border-l-2 border-amber-400">
+                <span className="text-xs text-gray-400 block mb-1">📝 原始内容：</span>
+                {original}
+                {edits.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <span className="text-xs text-gray-400 block mb-1">
+                      <History className="w-3 h-3 inline mr-1" />
+                      编辑历史：
+                    </span>
+                    {edits.map((e, i) => (
+                      <div key={i} className="text-xs text-gray-500 mt-1">
+                        <span className="text-amber-500">{e.date} {e.time}</span> {e.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <textarea
                 value={editContent}
@@ -267,9 +306,9 @@ export function EntryItem({ entry }: EntryItemProps) {
                   <span className="text-xs text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded">
                     {entry.sourceFile}
                   </span>
-                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <span className="text-xs text-gray-400 flex items-center gap-1" title={formatDisplayDate()}>
                     <Clock className="w-3 h-3" />
-                    {entry.date || '未记录日期'} {entry.time || ''}
+                    {formatDisplayDate()}
                   </span>
                 </div>
               </div>
@@ -282,14 +321,31 @@ export function EntryItem({ entry }: EntryItemProps) {
                   <p className="line-clamp-2">{entry.content}</p>
                 ) : (
                   <div className="bg-gray-50 rounded-lg p-3 -mx-2">
-                    <MarkdownPreview content={entry.content} />
+                    {/* 显示原文 */}
+                    <div className="text-sm text-gray-700 mb-2">
+                      <MarkdownPreview content={original} />
+                    </div>
+                    {/* 显示编辑历史 */}
+                    {edits.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
+                        <div className="text-xs text-gray-400 flex items-center gap-1 mb-2">
+                          <History className="w-3 h-3" />
+                          编辑历史 ({edits.length} 次)
+                        </div>
+                        {edits.map((e, i) => (
+                          <div key={i} className="bg-amber-50 rounded-lg px-3 py-2 text-sm border-l-2 border-amber-300">
+                            <span className="text-xs text-amber-600 font-medium">{e.date} {e.time}</span>
+                            <div className="text-gray-700 mt-0.5">{e.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
               <div className="flex items-center justify-between mt-1">
                 <div className="flex gap-1">
-                  {/* 完成状态切换 */}
                   <button
                     onClick={handleToggleComplete}
                     className={`p-1 transition-colors ${isCompleted ? 'text-green-500 hover:text-green-600' : 'text-gray-400 hover:text-green-500'}`}

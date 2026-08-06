@@ -20,17 +20,10 @@ function extractTags(content: string): string[] {
 }
 
 function extractPriority(content: string): 'urgent' | 'high' | 'medium' | 'low' {
-  // 优先解析 #priority 标签格式（新增的标准格式）
-  const priorityMatch = content.match(/#(urgent|high|medium|low)/i);
-  if (priorityMatch) {
-    return priorityMatch[1].toLowerCase() as 'urgent' | 'high' | 'medium' | 'low';
-  }
-  // 兼容旧格式：!! 表示紧急且重要
-  if (content.includes('!!')) {
+  if (content.includes('!!') || content.includes('紧急') || content.includes('urgent')) {
     return 'urgent';
   }
-  // 兼容旧格式：! 表示重要不紧急
-  if (content.includes('!')) {
+  if (content.includes('!') || content.includes('重要') || content.includes('important')) {
     return 'high';
   }
   return 'medium';
@@ -41,16 +34,15 @@ function extractCategoryId(content: string): string | null {
   return match ? match[1] : null;
 }
 
-// 判断一行是否为新条目的开头（时间戳、待办标记、日期头等）
 function isNewEntryLine(line: string): boolean {
   const trimmed = line.trim();
-  if (!trimmed) return true; // 空行视为分隔
-  if (trimmed.match(/^##\s/)) return true; // 日期头
-  if (trimmed.match(/^###?\s/)) return true; // 子标题
-  if (trimmed.match(/^\d{1,2}:\d{2}\s/)) return true; // 时间戳开头
-  if (trimmed.match(/^[-*]\s*\[[x ]\]/)) return true; // 待办标记
-  if (trimmed.match(/^[-*]\s+/)) return true; // 列表项
-  if (trimmed.match(/^\d+\.\s/)) return true; // 编号列表
+  if (!trimmed) return true;
+  if (trimmed.match(/^##\s/)) return true;
+  if (trimmed.match(/^###?\s/)) return true;
+  if (trimmed.match(/^\d{1,2}:\d{2}\s/)) return true;
+  if (trimmed.match(/^[-*]\s*\[[x ]\]/)) return true;
+  if (trimmed.match(/^[-*]\s+/)) return true;
+  if (trimmed.match(/^\d+\.\s/)) return true;
   return false;
 }
 
@@ -75,20 +67,29 @@ function extractDateFromContent(content: string): string | null {
   return null;
 }
 
+function extractTimeFromContent(content: string): string | null {
+  const match = content.match(/(\d{1,2}):(\d{2})/);
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2]}`;
+  }
+  return null;
+}
+
 export function parseChatMd(content: string, fileName: string = 'Chat.md'): MarkdownEntry[] {
   const entries: MarkdownEntry[] = [];
   const lines = content.split('\n');
 
   let currentDate = '';
   let currentTime = '';
+  let hasAnyDateHeader = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // 匹配 ## YYYY-MM-DD 日期头
     const dateMatch = trimmed.match(/^##\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/);
     if (dateMatch) {
+      hasAnyDateHeader = true;
       currentDate = dateMatch[1].replace(/\./g, '-').replace(/\//g, '-');
       const parts = currentDate.split('-');
       if (parts.length === 3) {
@@ -97,9 +98,7 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
       continue;
     }
 
-    // 时间戳开头 -> 新条目
     const timeMatch = trimmed.match(/^(\d{1,2}:\d{2})\s*-?\s*/);
-    // 待办标记开头 -> 新条目
     const isTodoStart = trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]') || trimmed.startsWith('* [ ]') || trimmed.startsWith('* [x]');
 
     if (timeMatch || isTodoStart) {
@@ -114,7 +113,6 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
       let cleanContent = contentToParse;
       if (isTodoStart) {
         cleanContent = contentToParse.replace(/^[-*]\s*\[[x ]\]\s*/, '');
-        // 待办行内可能还有时间戳
         const innerTime = cleanContent.match(/^(\d{1,2}:\d{2})\s*/);
         if (innerTime) {
           currentTime = innerTime[1];
@@ -129,6 +127,12 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
       if (!entryDate) {
         entryDate = extractDateFromContent(cleanContent) || '';
       }
+      // v1.18.5: 无日期头的条目，使用文件中最后一个日期头或今天
+      if (!entryDate && !hasAnyDateHeader) {
+        entryDate = formatDate(new Date());
+      }
+
+      const entryTime = currentTime || extractTimeFromContent(cleanContent) || '';
 
       entries.push({
         id: `${fileName}-${entries.length}`,
@@ -136,14 +140,13 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         type: entryType,
         categoryId: categoryId || undefined,
         date: entryDate,
-        time: currentTime || undefined,
+        time: entryTime || undefined,
         sourceFile: fileName,
         priority: extractPriority(contentToParse),
         tags: extractTags(contentToParse),
         completed: isTodoStart ? isCompleted : undefined,
       });
     } else if (!isNewEntryLine(trimmed) && entries.length > 0) {
-      // 延续行：合并到前一个条目
       const prev = entries[entries.length - 1];
       prev.content += '\n' + trimmed;
     }
@@ -194,23 +197,31 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
     if (contentToParse && !contentToParse.startsWith('#') && contentToParse.length > 0) {
       if (timeMatch || !isNewEntryLine(trimmed)) {
         if (timeMatch) {
-          // 新条目
           const categoryId = extractCategoryId(contentToParse);
           const entryType = categoryId || 'journal';
+
+          let entryDate = currentDate;
+          if (!entryDate) {
+            entryDate = extractDateFromContent(contentToParse) || '';
+          }
+          if (!entryDate) {
+            entryDate = formatDate(new Date());
+          }
+
+          const entryTime = currentTime || extractTimeFromContent(contentToParse) || '';
 
           entries.push({
             id: `${fileName}-${entries.length}`,
             content: stripMetadata(contentToParse),
             type: entryType,
             categoryId: categoryId || undefined,
-            date: currentDate,
-            time: currentTime || undefined,
+            date: entryDate,
+            time: entryTime || undefined,
             sourceFile: fileName,
             priority: extractPriority(contentToParse),
             tags: extractTags(contentToParse),
           });
         } else if (entries.length > 0) {
-          // 延续行
           const prev = entries[entries.length - 1];
           prev.content += '\n' + trimmed;
         }
@@ -261,12 +272,18 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
         if (!entryDate) {
           entryDate = extractDateFromContent(cleanContent) || '';
         }
+        if (!entryDate) {
+          entryDate = formatDate(new Date());
+        }
 
         const timeMatch = cleanContent.match(/^(\d{1,2}:\d{2})\s*/);
         let entryTime = '';
         if (timeMatch) {
           entryTime = timeMatch[1];
           cleanContent = cleanContent.replace(/^\d{1,2}:\d{2}\s*/, '');
+        }
+        if (!entryTime) {
+          entryTime = extractTimeFromContent(cleanContent) || '';
         }
 
         entries.push({
@@ -283,7 +300,6 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
         });
       }
     } else if (!isNewEntryLine(trimmed) && entries.length > 0) {
-      // 延续行：合并到前一个条目
       const prev = entries[entries.length - 1];
       prev.content += '\n' + trimmed;
     }
@@ -304,18 +320,12 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
       const contentStr = currentContent.join('\n');
       const categoryId = extractCategoryId(contentStr);
 
-      // 修复 v1.17：当没有 ## 日期头时，尝试从内容中提取日期
-      let brainDate = currentDate;
-      if (!brainDate) {
-        brainDate = extractDateFromContent(contentStr) || '';
-      }
-
       entries.push({
         id: `${fileName}-${entries.length}`,
         content: stripMetadata(contentStr),
         type: categoryId || 'note',
         categoryId: categoryId || undefined,
-        date: brainDate,
+        date: currentDate || formatDate(new Date()),
         sourceFile: fileName,
         priority: 'medium' as const,
         tags: extractTags(contentStr),

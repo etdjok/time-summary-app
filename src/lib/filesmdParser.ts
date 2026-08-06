@@ -141,11 +141,13 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         priority: extractPriority(contentToParse),
         tags: extractTags(contentToParse),
         completed: isTodoStart ? isCompleted : undefined,
+        rawLine: trimmed,  // 保存原始行用于精确匹配
       });
     } else if (!isNewEntryLine(trimmed) && entries.length > 0) {
       // 延续行：合并到前一个条目
       const prev = entries[entries.length - 1];
       prev.content += '\n' + trimmed;
+      prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
     }
   }
 
@@ -208,11 +210,13 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
             sourceFile: fileName,
             priority: extractPriority(contentToParse),
             tags: extractTags(contentToParse),
+            rawLine: trimmed,
           });
         } else if (entries.length > 0) {
           // 延续行
           const prev = entries[entries.length - 1];
           prev.content += '\n' + trimmed;
+          prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
         }
       }
     }
@@ -280,12 +284,14 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
           priority: extractPriority(trimmed),
           tags: extractTags(trimmed),
           completed: isCompleted,
+          rawLine: trimmed,
         });
       }
     } else if (!isNewEntryLine(trimmed) && entries.length > 0) {
       // 延续行：合并到前一个条目
       const prev = entries[entries.length - 1];
       prev.content += '\n' + trimmed;
+      prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
     }
   }
 
@@ -319,6 +325,7 @@ export function parseBrainMd(content: string, fileName: string): MarkdownEntry[]
         sourceFile: fileName,
         priority: 'medium' as const,
         tags: extractTags(contentStr),
+        rawLine: contentStr,
       });
       currentContent = [];
     }

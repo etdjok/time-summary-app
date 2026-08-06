@@ -28,7 +28,9 @@ export function AIAnalysis() {
 
   const getTypeLabel = (type: string): string => {
     const cat = categories.find(c => c.id === type);
-    return cat?.label || FILE_TYPE_LABELS[type] || type;
+    // 修正 custom_ 前缀
+    const cleanType = type && type.startsWith('custom_') ? type.slice(7) : type;
+    return cat?.label || (type && type.startsWith('custom_') ? type.slice(7) : null) || FILE_TYPE_LABELS[type] || cleanType;
   };
 
   // 智能分析数据

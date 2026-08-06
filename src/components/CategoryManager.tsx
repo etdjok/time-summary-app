@@ -191,7 +191,11 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-800">{cat.label}</p>
+                                        <p className="text-sm font-medium text-gray-800">
+                      {cat.label && cat.label.startsWith('custom_') 
+                        ? (cat.id.startsWith('custom_') ? cat.id.slice(7) : cat.label.slice(7)) 
+                        : cat.label}
+                    </p>
                     <p className="text-xs text-gray-400">
                       {cat.target}.md
                     </p>

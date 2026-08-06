@@ -54,6 +54,94 @@ function buildFilePath(basePath: string, sourceFile: string): string {
   return `${basePath}/${sourceFile}`;
 }
 
+// 匹配函数：支持多种匹配策略
+function matchEntryLine(line: string, entry: MarkdownEntry): boolean {
+  const trimmedLine = line.trim();
+  
+  if (!trimmedLine) return false;
+  
+  // 1. 如果条目有 rawLine，优先使用 rawLine 匹配
+  if (entry.rawLine) {
+    const rawLines = entry.rawLine.split('\n').map(l => l.trim()).filter(Boolean);
+    if (rawLines.length > 0) {
+      const firstRawLine = rawLines[0];
+      
+      // 精确匹配
+      if (firstRawLine === trimmedLine) return true;
+      
+      // 宽松匹配：处理时间戳差异
+      const normalizeLine = (s: string) => {
+        return s
+          .replace(/^\d{1,2}:\d{2}\s*/, '')  // 移除时间戳
+          .replace(/^-\s*\[[ x]\]\s*/, '')  // 移除待办标记
+          .replace(/^[-*]\s+/, '')  // 移除列表标记
+          .replace(/@cat:\S+\s*/g, '')  // 移除分类标记
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+      
+      const normRaw = normalizeLine(firstRawLine);
+      const normLine = normalizeLine(trimmedLine);
+      
+      // 内容匹配（忽略时间戳和标记差异）
+      if (normRaw === normLine) return true;
+      
+      // 子串匹配（处理一些边界情况）
+      if (normRaw.length > 5 && normLine.length > 5) {
+        if (normRaw.includes(normLine) || normLine.includes(normRaw)) {
+          // 验证核心内容是否匹配
+          const coreRaw = normRaw.replace(/^[-*]\s*/, '').trim();
+          const coreLine = normLine.replace(/^[-*]\s*/, '').trim();
+          if (coreRaw === coreLine) return true;
+        }
+      }
+    }
+  }
+  
+  // 2. 使用内容第一行匹配（兼容旧数据）
+  const contentFirstLine = (entry.content.split('\n')[0] || '').trim();
+  if (!contentFirstLine) return false;
+  
+  // 规范化字符串进行比较
+  const normStr = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const matchContent = normStr(contentFirstLine);
+  const lineContent = normStr(trimmedLine);
+  
+  // 检查是否包含匹配
+  if (lineContent.includes(matchContent) || matchContent.includes(lineContent)) {
+    // 进一步验证：如果条目有时间，检查时间是否匹配
+    const normTime = (t) => {
+      if (!t) return '';
+      const m = t.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return t;
+      const h = m[1].padStart(2, '0');
+      const mm = m[2];
+      return h + ':' + mm;
+    };
+    
+    const entryTimeNorm = normTime(entry.time);
+    
+    // 从文件行提取时间
+    const timeMatch = trimmedLine.match(/^(\d{1,2}:\d{2})\s+/);
+    const todoTimeMatch = trimmedLine.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+/);
+    
+    let fileTime = '';
+    if (timeMatch) {
+      fileTime = normTime(timeMatch[1]);
+    } else if (todoTimeMatch) {
+      fileTime = normTime(todoTimeMatch[2]);
+    }
+    
+    // 如果条目有时间，必须匹配；如果条目没有时间，直接匹配
+    if (!entryTimeNorm || !fileTime || entryTimeNorm === fileTime) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
   entries: [],
   currentPeriod: getPeriodForDate(new Date(), 'week'),
@@ -184,17 +272,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const displayType = updates.type || entry.categoryId || entry.type;
     const categoryMarker = displayType ? `@cat:${displayType} ` : '';
 
-    // 修复 v1.17：使用完整 content 第一行匹配（不截断），并对空白做归一化以与文件原文一致
-    const contentFirstLine = (entry.content.split('\n')[0] || '').trim();
-    const matchContent = contentFirstLine.replace(/\s+/g, ' ');
-    // 时间归一化（"9:30" -> "09:30"），用于和文件中可能补零的时间比较
-    const normTime = (t?: string): string => {
-      if (!t) return '';
-      const m = t.match(/^(\d{1,2}):(\d{2})$/);
-      return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t;
-    };
-    const entryTimeNorm = normTime(entry.time);
-
+    // 使用新的 matchEntryLine 函数进行精确匹配（支持无时间戳条目）
     const lines = readResult.content.split('\n');
     const updatedLines: string[] = [];
 
@@ -213,29 +291,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
-      // 修复 v1.17：时间正则统一为 1-2 位小时（与解析器一致），时间比较前做 padStart 归一化
       const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
       const todoMatch = line.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
 
-      let isTargetLine = false;
-
-      // 对文件行内容也做空白归一化，保证与 matchContent 一致
-      const normContent = (s: string) => s.replace(/\s+/g, ' ').trim();
-
-      if (todoMatch) {
-        const [, check, time, fileContent] = todoMatch;
-        const timeNorm = normTime(time);
-        // entry.time 可能是 undefined（无时间前缀的条目），此时只用内容匹配
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(fileContent).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      } else if (timeMatch) {
-        const [, time, fileContent] = timeMatch;
-        const timeNorm = normTime(time);
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(fileContent).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      }
+      const isTargetLine = matchEntryLine(line, entry);
 
       if (isTargetLine) {
         let blockEnd = i + 1;
@@ -247,17 +306,29 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
         const newPriority = updates.priority || entry.priority;
         const completed = updates.completed ?? entry.completed;
 
+        // 保留原有行
+        updatedLines.push(line);
+        i++;
+
+        // 追加新行：带日期时间
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const editMarker = `[已编辑 ${dateStr} ${timeStr}] `;
+
         let newLine: string;
-        const entryTimeStr = entry.time ? `${entry.time} ` : '';
         if (todoMatch) {
           const checkMark = completed ? 'x' : ' ';
-          newLine = `- [${checkMark}] ${entryTimeStr}${categoryMarker}${attachPriority(newContent, newPriority)}`;
+          newLine = `- [${checkMark}] ${timeStr} ${categoryMarker}${editMarker}${attachPriority(newContent, newPriority)}`;
         } else {
-          newLine = `${entryTimeStr}${categoryMarker}${attachPriority(newContent, newPriority)}`;
+          newLine = `${timeStr} ${categoryMarker}${editMarker}${attachPriority(newContent, newPriority)}`;
         }
 
         updatedLines.push(newLine);
-        i = blockEnd;
+        // 跳过原有的后续行（如原内容的附加说明）
+        while (i < blockEnd) {
+          i++;
+        }
       } else {
         updatedLines.push(line);
         i++;
@@ -289,16 +360,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const readResult = await readFile(filePath);
     if (!readResult.success || !readResult.content) return false;
 
-    // 修复 v1.17：使用完整 content 第一行匹配（不截断），并对空白做归一化
-    const contentFirstLine = (entry.content.split('\n')[0] || '').trim();
-    const matchContent = contentFirstLine.replace(/\s+/g, ' ');
-    const normTime = (t?: string): string => {
-      if (!t) return '';
-      const m = t.match(/^(\d{1,2}):(\d{2})$/);
-      return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t;
-    };
-    const entryTimeNorm = normTime(entry.time);
-
+    // 使用新的 matchEntryLine 函数进行精确匹配（支持无时间戳条目）
     const lines = readResult.content.split('\n');
     const updatedLines: string[] = [];
     
@@ -318,27 +380,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     let deleted = false;
     while (i < lines.length) {
       const line = lines[i];
-      // 修复 v1.17：时间正则统一为 1-2 位小时，时间比较前做 padStart 归一化
       const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
       const todoMatch = line.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
       
-      let isTargetLine = false;
-      
-      const normContent = (s: string) => s.replace(/\s+/g, ' ').trim();
-      
-      if (todoMatch) {
-        const [, , time, content] = todoMatch;
-        const timeNorm = normTime(time);
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(content).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      } else if (timeMatch) {
-        const [, time, content] = timeMatch;
-        const timeNorm = normTime(time);
-        if ((!entryTimeNorm || timeNorm === entryTimeNorm) && normContent(content).includes(matchContent)) {
-          isTargetLine = true;
-        }
-      }
+      const isTargetLine = matchEntryLine(line, entry);
       
       if (isTargetLine && !deleted) {
         let blockEnd = i + 1;
@@ -413,7 +458,11 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     let completed = 0;
 
     entries.forEach((entry) => {
-      const displayType = entry.categoryId || entry.type;
+      let displayType = entry.categoryId || entry.type;
+      // 修正 custom_ 前缀：从 id 中提取真实名称用于统计
+      if (displayType && displayType.startsWith('custom_')) {
+        displayType = displayType.slice(7);
+      }
       if (!byType[displayType]) byType[displayType] = 0;
       byType[displayType]++;
       byPriority[entry.priority] = (byPriority[entry.priority] || 0) + 1;

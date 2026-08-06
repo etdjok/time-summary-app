@@ -38,6 +38,8 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
 
   // v1.18.2: 获取分类标签，带 custom_ 兜底
   const getCategoryLabel = (type: string): string => {
+    // 先修正 custom_ 前缀
+    const cleanType = type && type.startsWith('custom_') ? type.slice(7) : type;
     const cat = categories.find(c => c.id === type);
     if (cat) {
       if (cat.label && cat.label.startsWith('custom_')) {
@@ -45,7 +47,11 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
       }
       return cat.label;
     }
-    return FILE_TYPE_LABELS[type] || type;
+    // 找不到分类时，也从 id 中提取真实名称
+    if (type && type.startsWith('custom_')) {
+      return type.slice(7);
+    }
+    return FILE_TYPE_LABELS[type] || cleanType;
   };
 
   // 获取分类图标

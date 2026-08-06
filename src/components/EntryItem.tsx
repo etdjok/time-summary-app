@@ -62,6 +62,8 @@ export function EntryItem({ entry }: EntryItemProps) {
 
   // v1.18.2: 显示时兜底，label 以 custom_ 开头时从 id 提取真实名称
   const getTypeLabel = (type: string): string => {
+    // 先修正 custom_ 前缀
+    const cleanType = type && type.startsWith('custom_') ? type.slice(7) : type;
     const cat = categories.find(c => c.id === type);
     if (cat) {
       if (cat.label && cat.label.startsWith('custom_')) {
@@ -69,7 +71,11 @@ export function EntryItem({ entry }: EntryItemProps) {
       }
       return cat.label;
     }
-    return FILE_TYPE_LABELS[type] || type;
+    // 找不到分类时，也从 id 中提取真实名称
+    if (type && type.startsWith('custom_')) {
+      return type.slice(7);
+    }
+    return FILE_TYPE_LABELS[type] || cleanType;
   };
 
   const getTypeIcon = (type: string): React.ReactNode => {

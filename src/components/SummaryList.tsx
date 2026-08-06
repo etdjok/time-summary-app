@@ -48,9 +48,20 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
       );
 
   const getTypeLabel = (type: string): string => {
+    // 先修正 custom_ 前缀
+    const cleanType = type && type.startsWith('custom_') ? type.slice(7) : type;
     const cat = categories.find(c => c.id === type);
-    if (cat) return cat.label;
-    return FILE_TYPE_LABELS[type] || type;
+    if (cat) {
+      if (cat.label && cat.label.startsWith('custom_')) {
+        return cat.id.startsWith('custom_') ? cat.id.slice(7) : cat.label.slice(7);
+      }
+      return cat.label;
+    }
+    // 找不到分类时，也从 id 中提取真实名称
+    if (type && type.startsWith('custom_')) {
+      return type.slice(7);
+    }
+    return FILE_TYPE_LABELS[type] || cleanType;
   };
 
   return (

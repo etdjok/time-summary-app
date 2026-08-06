@@ -175,12 +175,16 @@ export const useCategories = create<CategoryStore>()((set) => {
       // v1.18: id 用 target（稳定标识），跨设备可识别
       const target = category.target || category.label;
       const id = `custom_${target}`;
+      // 立即修正 label，移除可能的 custom_ 前缀
+      const fixedLabel = (category.label && category.label.startsWith('custom_'))
+        ? id.slice(7)
+        : category.label;
       set((state) => {
         // 避免 id 重复
         if (state.categories.some((c) => c.id === id)) {
           return state;
         }
-        const updated = [...state.categories, { ...category, id, target }];
+        const updated = [...state.categories, { ...category, label: fixedLabel, id, target }];
         saveCategories(updated);
         return { categories: updated };
       });

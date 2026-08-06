@@ -55,10 +55,13 @@ function buildFilePath(basePath: string, sourceFile: string): string {
 }
 
 // 匹配函数：支持多种匹配策略
-function matchEntryLine(line: string, entry: MarkdownEntry): boolean {
+function matchEntryLine(line: string, entry: MarkdownEntry, preferOriginal: boolean = false): boolean {
   const trimmedLine = line.trim();
   
   if (!trimmedLine) return false;
+  
+  // 如果 preferOriginal 为 true，跳过包含编辑标记的历史行
+  if (preferOriginal && /\[已编辑\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\]/.test(trimmedLine)) return false;
   
   // 1. 如果条目有 rawLine，优先使用 rawLine 匹配
   if (entry.rawLine) {
@@ -76,6 +79,7 @@ function matchEntryLine(line: string, entry: MarkdownEntry): boolean {
           .replace(/^-\s*\[[ x]\]\s*/, '')  // 移除待办标记
           .replace(/^[-*]\s+/, '')  // 移除列表标记
           .replace(/@cat:\S+\s*/g, '')  // 移除分类标记
+          .replace(/\[已编辑[^\]]*\]\s*/g, '')  // 移除编辑标记
           .replace(/\s+/g, ' ')
           .trim();
       };
@@ -294,23 +298,24 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
       const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
       const todoMatch = line.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
 
-      const isTargetLine = matchEntryLine(line, entry);
+      const isTargetLine = matchEntryLine(line, entry, true);
 
       if (isTargetLine) {
-        let blockEnd = i + 1;
-        while (blockEnd < lines.length && !isNewEntry(lines[blockEnd])) {
-          blockEnd++;
-        }
-
         const newContent = updates.content || entry.content;
         const newPriority = updates.priority || entry.priority;
         const completed = updates.completed ?? entry.completed;
 
-        // 保留原有行
+        // 保留原始行（不修改）
         updatedLines.push(line);
         i++;
 
-        // 追加新行：带日期时间
+        // 跳过紧跟在原始行后面的编辑历史行
+        let blockEnd = i;
+        while (blockEnd < lines.length && !isNewEntry(lines[blockEnd])) {
+          blockEnd++;
+        }
+
+        // 追加新的编辑行：带日期时间
         const now = new Date();
         const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -325,7 +330,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
         }
 
         updatedLines.push(newLine);
-        // 跳过原有的后续行（如原内容的附加说明）
+        
+        // 跳过原有的后续行（如原内容的附加说明或之前的编辑历史）
         while (i < blockEnd) {
           i++;
         }

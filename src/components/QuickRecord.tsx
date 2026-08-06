@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Send, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Grid3x3, AlertTriangle, Target, Clock, MinusCircle } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
@@ -25,6 +25,16 @@ export function QuickRecord() {
   const { categories } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id || 'chat');
 
+  // 当 categories 变化时，确保 selectedCategory 有效
+  useEffect(() => {
+    if (categories.length > 0) {
+      const isValid = categories.some(c => c.id === selectedCategory);
+      if (!isValid) {
+        setSelectedCategory(categories[0].id);
+      }
+    }
+  }, [categories, selectedCategory]);
+
   const activeCategory = categories.find((c) => c.id === selectedCategory) || categories[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,7 +45,6 @@ export function QuickRecord() {
 
     try {
       const priority = selectedPriority as 'urgent' | 'high' | 'medium' | 'low' | undefined;
-      // 修复：传递 priority 参数
       const success = await addEntry(content.trim(), activeCategory.target, activeCategory.id, priority);
       if (success) {
         setContent('');

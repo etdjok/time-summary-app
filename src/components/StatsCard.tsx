@@ -1,7 +1,6 @@
-﻿import { BarChart3, CheckCircle, FileText, Lightbulb, BookOpen, MessageSquare, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
+import { BarChart3, CheckCircle, FileText, Lightbulb, BookOpen, MessageSquare, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
-import { FILE_TYPE_LABELS } from '../types';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText,
@@ -33,10 +32,7 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
   const { categories } = useCategories();
   const stats = getStats();
 
-  // 显示所有类型，即使count=0
-  const typeEntries = Object.entries(stats.byType);
-
-  // v1.18.2: 获取分类标签，带 custom_ 兜底
+  // 获取分类标签，带 custom_ 兜底
   const getCategoryLabel = (type: string): string => {
     const cat = categories.find(c => c.id === type);
     if (cat) {
@@ -45,7 +41,7 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
       }
       return cat.label;
     }
-    return FILE_TYPE_LABELS[type] || type;
+    return type;
   };
 
   // 获取分类图标
@@ -93,24 +89,27 @@ export function StatsCard({ onTypeClick }: StatsCardProps) {
         </div>
       </div>
 
-      {typeEntries.length > 0 && (
+      {categories.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-gray-500">按类型分布（点击可筛选）</p>
-          {typeEntries.map(([type, count]) => (
-            <button
-              key={type}
-              onClick={() => handleTypeClick(type)}
-              className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
-            >
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${getCategoryColor(type)} transition-colors`}>
-                {getCategoryIcon(type)}
-              </div>
-              <span className="text-sm text-gray-700 flex-1">
-                {getCategoryLabel(type)}
-              </span>
-              <span className="text-sm font-medium text-gray-900">{count}</span>
-            </button>
-          ))}
+          {categories.map((cat) => {
+            const count = stats.byType[cat.id] || 0;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => handleTypeClick(cat.id)}
+                className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${getCategoryColor(cat.id)} transition-colors`}>
+                  {getCategoryIcon(cat.id)}
+                </div>
+                <span className="text-sm text-gray-700 flex-1">
+                  {getCategoryLabel(cat.id)}
+                </span>
+                <span className="text-sm font-medium text-gray-900">{count}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

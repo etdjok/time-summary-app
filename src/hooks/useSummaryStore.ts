@@ -74,14 +74,24 @@ function isNewEntryLine(l: string): boolean {
   return false;
 }
 
-// 判断一行是否可能匹配目标条目（通过内容+时间双匹配）
+// 判断一行是否可能匹配目标条目
+// v1.18.5: 新增 rawLine 精确匹配，优先使用
 function lineMatchesEntry(
   line: string,
   entryTime: string,
-  matchContent: string
+  matchContent: string,
+  rawLine?: string
 ): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
+
+  // 优先使用 rawLine 精确匹配（v1.18.5）
+  if (rawLine) {
+    const rawFirstLine = rawLine.split('\n')[0].trim();
+    if (trimmed === rawFirstLine) {
+      return true;
+    }
+  }
 
   // 模式1: 带时间戳的条目
   const timeMatch = trimmed.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
@@ -247,7 +257,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     while (i < lines.length) {
       const line = lines[i];
 
-      if (lineMatchesEntry(line, entryTimeNorm, matchContent)) {
+      // v1.18.5: 传入 rawLine 进行精确匹配
+      if (lineMatchesEntry(line, entryTimeNorm, matchContent, entry.rawLine)) {
         // 收集所有延续行
         let blockEnd = i + 1;
         while (blockEnd < lines.length && !isNewEntryLine(lines[blockEnd])) {
@@ -313,7 +324,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     while (i < lines.length) {
       const line = lines[i];
 
-      if (lineMatchesEntry(line, entryTimeNorm, matchContent) && !deleted) {
+      // v1.18.5: 传入 rawLine 进行精确匹配
+      if (lineMatchesEntry(line, entryTimeNorm, matchContent, entry.rawLine) && !deleted) {
         let blockEnd = i + 1;
         while (blockEnd < lines.length && !isNewEntryLine(lines[blockEnd])) {
           blockEnd++;

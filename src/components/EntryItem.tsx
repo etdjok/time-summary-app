@@ -3,6 +3,7 @@ import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown,
 import { MarkdownPreview } from './MarkdownPreview';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
+import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText,
@@ -117,6 +118,7 @@ export function EntryItem({ entry }: EntryItemProps) {
       const now = new Date();
       const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      // v1.18.5: 编辑内容另起一行，前面加上保存时的日期和时间
       contentToSave = `${entry.content}\n${dateStr} ${timeStr} ${editContent.trim()}`;
     }
     
@@ -318,11 +320,12 @@ export function EntryItem({ entry }: EntryItemProps) {
                 onClick={() => setIsExpanded(!isExpanded)}
               >
                 {!isExpanded ? (
-                  <p className="line-clamp-2">{entry.content}</p>
+                  // v1.18.5: 使用 whitespace-pre-wrap 确保编辑历史行中的 \n 正确换行显示
+                  <p className="line-clamp-2 whitespace-pre-wrap">{entry.content}</p>
                 ) : (
                   <div className="bg-gray-50 rounded-lg p-3 -mx-2">
                     {/* 显示原文 */}
-                    <div className="text-sm text-gray-700 mb-2">
+                    <div className="text-sm text-gray-700 mb-2 whitespace-pre-wrap">
                       <MarkdownPreview content={original} />
                     </div>
                     {/* 显示编辑历史 */}
@@ -333,7 +336,7 @@ export function EntryItem({ entry }: EntryItemProps) {
                           编辑历史 ({edits.length} 次)
                         </div>
                         {edits.map((e, i) => (
-                          <div key={i} className="bg-amber-50 rounded-lg px-3 py-2 text-sm border-l-2 border-amber-300">
+                          <div key={i} className="bg-amber-50 rounded-lg px-3 py-2 text-sm border-l-2 border-amber-300 whitespace-pre-wrap">
                             <span className="text-xs text-amber-600 font-medium">{e.date} {e.time}</span>
                             <div className="text-gray-700 mt-0.5">{e.text}</div>
                           </div>

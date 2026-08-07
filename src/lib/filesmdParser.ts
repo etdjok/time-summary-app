@@ -105,9 +105,51 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
     // 待办标记开头 -> 新条目
     const isTodoStart = trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]') || trimmed.startsWith('* [ ]') || trimmed.startsWith('* [x]');
 
+    // 检查行中任何位置是否包含日期时间戳作为编辑行标志
     const hasDateTimeStamp = /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmed);
     const isEditLine = hasDateTimeStamp;
-    if (!isEditLine && (timeMatch || isTodoStart)) {
+    if (isEditLine && entries.length > 0) {
+      // 编辑行：合并到前一个条目
+      const prev = entries[entries.length - 1];
+      prev.content += '\n' + trimmed;
+      prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
+    } else if (isEditLine && entries.length === 0 && (timeMatch || isTodoStart)) {
+      // 第一行包含日期时间戳但有时间戳/待办开头：创建新条目
+      if (timeMatch) currentTime = timeMatch[1];
+
+      const contentToParse = timeMatch
+        ? trimmed.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '')
+        : trimmed;
+
+      const isCompleted = contentToParse.startsWith('- [x]') || contentToParse.startsWith('* [x]');
+
+      let cleanContent = contentToParse;
+      if (isTodoStart) {
+        cleanContent = contentToParse.replace(/^[-*]\s*\[[x ]\]\s*/, '');
+      }
+
+      const categoryId = extractCategoryId(cleanContent);
+      const entryType = categoryId || (isTodoStart ? 'todo' : 'chat');
+
+      let entryDate = currentDate;
+      if (!entryDate) {
+        entryDate = extractDateFromContent(cleanContent) || '';
+      }
+
+      entries.push({
+        id: `${fileName}-${entries.length}`,
+        content: stripMetadata(cleanContent),
+        type: entryType,
+        categoryId: categoryId || undefined,
+        date: entryDate,
+        time: currentTime || undefined,
+        sourceFile: fileName,
+        priority: extractPriority(contentToParse),
+        tags: extractTags(contentToParse),
+        completed: isTodoStart ? isCompleted : undefined,
+        rawLine: trimmed,
+      });
+    } else if (!isEditLine && (timeMatch || isTodoStart)) {
       if (timeMatch) currentTime = timeMatch[1];
 
       const contentToParse = timeMatch
@@ -148,6 +190,11 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         completed: isTodoStart ? isCompleted : undefined,
         rawLine: trimmed,  // 保存原始行用于精确匹配
       });
+    } else if (isEditLine && entries.length > 0) {
+      // 编辑行：合并到前一个条目
+      const prev = entries[entries.length - 1];
+      prev.content += '\n' + trimmed;
+      prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
     } else if (!isNewEntryLine(trimmed) && entries.length > 0) {
       // 延续行：合并到前一个条目
       const prev = entries[entries.length - 1];
@@ -199,9 +246,33 @@ export function parseJournalMd(content: string, fileName: string): MarkdownEntry
     const contentToParse = timeMatch ? trimmed.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '') : trimmed;
 
     if (contentToParse && !contentToParse.startsWith('#') && contentToParse.length > 0) {
+      // 检查行中任何位置是否包含日期时间戳作为编辑行标志
       const hasDateTimeStampJournal = /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmed);
       const isEditLineJournal = hasDateTimeStampJournal;
-      if (!isEditLineJournal && (timeMatch || !isNewEntryLine(trimmed))) {
+      
+      if (isEditLineJournal && entries.length > 0) {
+        // 编辑行：合并到前一个条目
+        const prev = entries[entries.length - 1];
+        prev.content += '\n' + trimmed;
+        prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
+      } else if (isEditLineJournal && entries.length === 0 && timeMatch) {
+        // 第一行包含日期时间戳但有时间戳开头：创建新条目
+        const categoryId = extractCategoryId(contentToParse);
+        const entryType = categoryId || 'journal';
+
+        entries.push({
+          id: `${fileName}-${entries.length}`,
+          content: stripMetadata(contentToParse),
+          type: entryType,
+          categoryId: categoryId || undefined,
+          date: currentDate,
+          time: currentTime || undefined,
+          sourceFile: fileName,
+          priority: extractPriority(contentToParse),
+          tags: extractTags(contentToParse),
+          rawLine: trimmed,
+        });
+      } else if (!isEditLineJournal && (timeMatch || !isNewEntryLine(trimmed))) {
         if (timeMatch) {
           // 新条目
           const categoryId = extractCategoryId(contentToParse);
@@ -256,9 +327,46 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
                    trimmed.startsWith('* [ ]') || trimmed.startsWith('* [x]') ||
                    trimmed.startsWith('- ') || trimmed.startsWith('* ');
 
+    // 检查行中任何位置是否包含日期时间戳作为编辑行标志
     const hasDateTimeStampTodo = /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmed);
     const isEditLineTodo = hasDateTimeStampTodo;
-    if (!isEditLineTodo && (isTodo || trimmed.match(/^\d+\./))) {
+    
+    if (isEditLineTodo && entries.length > 0) {
+      // 编辑行：合并到前一个条目
+      const prev = entries[entries.length - 1];
+      prev.content += '\n' + trimmed;
+      prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
+    } else if (isEditLineTodo && entries.length === 0 && isTodo) {
+      // 第一行包含日期时间戳但是待办项：创建新条目
+      const isCompleted = trimmed.startsWith('- [x]') || trimmed.startsWith('* [x]');
+
+      let cleanContent = trimmed
+        .replace(/^[-*]\s*\[[x ]\]\s*/, '')
+        .replace(/^[-*]\s+/, '');
+
+      if (cleanContent && cleanContent.length > 0) {
+        const categoryId = extractCategoryId(cleanContent);
+        const entryType = categoryId || 'todo';
+
+        let entryDate = currentDate;
+        if (!entryDate) {
+          entryDate = extractDateFromContent(cleanContent) || '';
+        }
+
+        entries.push({
+          id: `${fileName}-${entries.length}`,
+          content: stripMetadata(cleanContent),
+          type: entryType,
+          categoryId: categoryId || undefined,
+          date: entryDate,
+          sourceFile: fileName,
+          priority: extractPriority(trimmed),
+          tags: extractTags(trimmed),
+          completed: isCompleted,
+          rawLine: trimmed,
+        });
+      }
+    } else if (!isEditLineTodo && (isTodo || trimmed.match(/^\d+\./))) {
       const isCompleted = trimmed.startsWith('- [x]') || trimmed.startsWith('* [x]');
 
       let cleanContent = trimmed

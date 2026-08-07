@@ -29,12 +29,17 @@ export default defineConfig({
       },
     }),
     tsconfigPaths(),
+    // PWA 配置 - 禁用自动更新，使用 prompt 模式
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,json}'],
+        // 不要自动清理旧缓存，避免循环刷新
+        cleanupOutdatedCaches: false,
       },
       manifest: false,
+      // 不自动注入 SW，使用自定义的 registerSW.js
+      injectRegister: false,
     }),
   ],
 })

@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { MarkdownEntry, Period, PeriodType } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
 import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, appendToIdeaMd, appendToNoteMd, appendToFile, deleteFile, readFile, writeFile } from '../lib/nutstore';
@@ -57,15 +57,16 @@ function matchEntryLine(line: string, entry: MarkdownEntry, preferOriginal: bool
   
   if (!trimmedLine) return false;
   
-  if (preferOriginal && /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmedLine)) return false;
-  
+  // 1. 先用 rawLine 做所有匹配（精确 + 标准化），即使包含日期时间戳也应该匹配
   if (entry.rawLine) {
     const rawLines = entry.rawLine.split('\n').map(l => l.trim()).filter(Boolean);
     if (rawLines.length > 0) {
       const firstRawLine = rawLines[0];
       
+      // 精确匹配
       if (firstRawLine === trimmedLine) return true;
       
+      // 标准化匹配
       const normalizeLine = (s: string) => {
         return s
           .replace(/^\d{1,2}:\d{2}\s*/, '')
@@ -92,6 +93,10 @@ function matchEntryLine(line: string, entry: MarkdownEntry, preferOriginal: bool
     }
   }
   
+  // 2. rawLine 匹配失败后，跳过包含日期时间戳的行（这些是编辑行，不是原始行）
+  if (preferOriginal && /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(trimmedLine)) return false;
+  
+  // 3. 用 content 第一行做匹配
   const contentFirstLine = (entry.content.split('\n')[0] || '').trim();
   if (!contentFirstLine) return false;
   
@@ -128,7 +133,7 @@ function matchEntryLine(line: string, entry: MarkdownEntry, preferOriginal: bool
   
   return false;
 }
-﻿
+
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
   entries: [],
   currentPeriod: getPeriodForDate(new Date(), 'week'),
@@ -242,7 +247,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
 
     return success;
   },
-﻿  updateEntry: async (entryId: string, updates: Partial<MarkdownEntry>): Promise<boolean> => {
+  updateEntry: async (entryId: string, updates: Partial<MarkdownEntry>): Promise<boolean> => {
     const { entries, nutstoreBasePath } = get();
     const entry = entries.find(e => e.id === entryId);
     if (!entry) return false;
@@ -261,7 +266,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const isNewEntry = (l: string): boolean => {
       const t = l.trim();
       if (!t) return true;
-      if (t.includes('[已编辑') || /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(t)) return false;
+      // 检查行中是否包含日期时间戳（在任何位置），包含则视为编辑行
+      if (t.includes('[已编辑') || /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(t)) return false;
       if (t.match(/^##\s/)) return true;
       if (t.match(/^###?\s/)) return true;
       if (t.match(/^\d{1,2}:\d{2}\s/)) return true;
@@ -289,6 +295,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
         i++;
 
         let lastEditIndex = -1;
+        // 收集编辑行 - 检查行中是否包含日期时间戳（在任何位置）
+        // 编辑行格式：12:03 @cat:journal 2026-08-07 12:03 内容 #优先级
         while (i < lines.length && /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(lines[i].trim())) {
           updatedLines.push(lines[i]);
           lastEditIndex = i;
@@ -354,7 +362,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     
     return false;
   },
-﻿  deleteEntry: async (entryId: string): Promise<boolean> => {
+  deleteEntry: async (entryId: string): Promise<boolean> => {
     const { entries, nutstoreBasePath } = get();
     const entry = entries.find(e => e.id === entryId);
     if (!entry) return false;
@@ -370,7 +378,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const isNewEntry = (l: string): boolean => {
       const t = l.trim();
       if (!t) return true;
-      if (t.includes('[已编辑') || /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(t)) return false;
+      // 检查行中是否包含日期时间戳（在任何位置），包含则视为编辑行
+      if (t.includes('[已编辑') || /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(t)) return false;
       if (t.match(/^##\s/)) return true;
       if (t.match(/^###?\s/)) return true;
       if (t.match(/^\d{1,2}:\d{2}\s/)) return true;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain } from 'lucide-react';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
@@ -96,11 +96,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-3 py-4">
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">心光</h1>
-            <p className="text-sm text-gray-500 mt-0.5">v1.18.7 · 你的时光记录与思考空间</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-gray-800">心光</h1>
+            <span className="text-xs text-gray-400">v1.18.8</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -157,7 +157,7 @@ export default function Home() {
         </div>
 
         {!isConnected && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4 text-center">
+          <div className="bg-white rounded-xl shadow p-4 mb-3 text-center">
             <Cloud className="w-12 h-12 text-amber-300 mx-auto mb-3" />
             <h3 className="text-lg font-semibold text-gray-800 mb-2">连接坚果云</h3>
             <p className="text-sm text-gray-500 mb-4">
@@ -173,7 +173,7 @@ export default function Home() {
         )}
 
         {isConnected && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-3">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-3 flex items-center gap-2">
             <Cloud className="w-5 h-5 text-green-600 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-green-700">坚果云已连接</p>
@@ -194,7 +194,7 @@ export default function Home() {
         {isConnected && <QuickRecord />}
 
         <PeriodNavigation />
-        <StatsCard onTypeClick={handleTypeClick} />
+        <StatsCard onTypeClick={handleTypeClick} compact={true} />
 
         <div className="flex items-center gap-1 bg-white rounded-xl shadow-sm p-1 mb-4">
           <button
@@ -278,3 +278,4 @@ export default function Home() {
     </div>
   );
 }
+

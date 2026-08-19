@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 临时测试文件
+test-cors.html
+*.env
+# 服务器密码文件（包含登录口令，禁止提交）
+api/password.json
+# 备份目录（本地版本备份，不需要上传）
+.backup_*/
+
+# 备份文件
+*.bak*
+
+# 临时修复脚本（本地维护用）
+fix_*.py
+add_delete_feature.py
+
+# 临时文件
+*.tmp
+

@@ -21,6 +21,7 @@ import {
   clearEncryptSettings,
   verifyLoginPassword,
   changeEncryptionPassword,
+  resetPasswordWithRecovery,
   clearSessionMK,
   getSessionMK,
   ENC_MAGIC_NEW,
@@ -298,5 +299,40 @@ describe('登录哈希残留容错（v2.2.1）', () => {
     expect((await loginWithPassword(TEST_PASSWORD)).success).toBe(false);
     clearSessionMK();
     expect((await loginWithPassword('new-password-456')).success).toBe(true);
+  });
+});
+
+describe('恢复码云端回退（v2.2.3）', () => {
+  it('本地恢复配置为旧设置残留时，自动回退云端备份恢复成功', async () => {
+    // 第一次设置：生成与用户恢复码匹配的"云端备份"
+    const first = await setupEncryption(TEST_PASSWORD);
+    expect(first.recoveryCode).toBeTruthy();
+    const cloudBackup = buildCloudBackupPayload()!.recovery;
+
+    // 模拟后续另一次设置：本地恢复配置被覆盖为新设置的数据（与用户手中恢复码不匹配）
+    await setupEncryption('another-password-999');
+    clearSessionMK();
+
+    // 用户用第一次的恢复码重置：本地解不开 → 应回退云端并成功
+    const r = await resetPasswordWithRecovery(
+      first.recoveryCode!, 'brand-new-pass',
+      async () => cloudBackup,
+    );
+    expect(r.success).toBe(true);
+    clearSessionMK();
+    expect((await loginWithPassword('brand-new-pass')).success).toBe(true);
+  });
+
+  it('本地与云端均不匹配时明确报错', async () => {
+    const first = await setupEncryption(TEST_PASSWORD);
+    const cloudBackup = buildCloudBackupPayload()!.recovery;
+    await setupEncryption('another-password-999');
+    clearSessionMK();
+    const r = await resetPasswordWithRecovery(
+      'WRONG-CODE-XXXX', 'brand-new-pass',
+      async () => cloudBackup,
+    );
+    expect(r.success).toBe(false);
+    expect(first.recoveryCode).toBeTruthy();
   });
 });

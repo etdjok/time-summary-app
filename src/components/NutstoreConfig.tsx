@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Settings, X, Check, AlertCircle, FolderOpen, ChevronRight, Copy, Shield } from 'lucide-react';
-import { saveCredentials, clearCredentials, hasCredentials, testConnectionWithDetails, listRootFolders, getCredentials, backupRecoveryToCloud, fetchRecoveryBackupFromCloud, getCredentialUsername, saveCredentialsSmart, hasEncryptedCredentials } from '../lib/nutstore';
+import { saveCredentials, clearCredentials, hasCredentials, testConnectionWithDetails, listRootFolders, getCredentials, backupRecoveryToCloud, fetchRecoveryBackupFromCloud, getCredentialUsername, saveCredentialsSmart, hasEncryptedCredentials, getCredentialsAsync } from '../lib/nutstore';
 import {
   getEncryptSettings, saveEncryptSettings, clearEncryptSettings,
   setupEncryption, normalizeRecoveryCode,
   hasSessionMK, hasLocalEncryptionKeys, markRecoveryShown, loginWithPassword, logout,
-  encryptExistingFiles, unlockWithCloudBackup, type MigrationStats,
+  encryptExistingFiles, unlockWithCloudBackup, type MigrationStats, clearSessionMK,
 } from '../lib/crypto';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 
@@ -242,6 +242,7 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     if (!encPassword) { setResult({ success: false, message: '请输入加密密码' }); return; }
     setCloudUnlockBusy(true);
     setResult({ success: true, message: '正在从云端备份解锁...' });
+    await ensureCredentialsForCloud();
     const r = await unlockWithCloudBackup(encPassword, async () => {
       const cr = await fetchRecoveryBackupFromCloud(basePath);
       return cr.success ? (cr.raw || null) : null;
@@ -281,15 +282,27 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     }
   };
 
-  // v2.2 强制放弃云端旧加密数据（需二次确认），进入全新设置流程
+  // v2.2.3 修复：强制重置必须真正清除本地旧加密配置（含内存会话密钥）。
+  // 原先仅切换界面状态，保存时仍被路由到旧密码解锁分支，"生成全新密钥"的承诺从未兑现。
   const handleForceReset = () => {
     if (!confirmForceReset) { setConfirmForceReset(true); return; }
+    clearEncryptSettings();
+    clearSessionMK();
     setForceReset(true);
     setCloudLocked(false);
     setConfirmForceReset(false);
+    setEncActive(false);
     setEncPassword('');
     setEncConfirm('');
     setResult({ success: false, message: '已选择放弃云端旧加密数据。请设置新的加密密码，保存后将生成全新密钥并覆盖云端备份。' });
+  };
+
+  // v2.2.3：本地凭据可能被旧密钥加密而不可读（会话锁定时解不开），
+  // 云端拉取备份前若表单已填账号密码，先兜底保存为可用凭据
+  const ensureCredentialsForCloud = async () => {
+    if (username && password && !(await getCredentialsAsync())) {
+      await saveCredentialsSmart(username, password);
+    }
   };
 
   const handleSaveAndTest = async () => {
@@ -413,6 +426,7 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     if (!forgotNewPassword || forgotNewPassword.length < 6) { setForgotResult({ success: false, message: '新密码至少 6 位' }); setForgotBusy(false); return; }
     if (forgotNewPassword !== forgotConfirm) { setForgotResult({ success: false, message: '两次密码不一致' }); setForgotBusy(false); return; }
     const { resetPasswordWithRecovery } = await import('../lib/crypto');
+    await ensureCredentialsForCloud();
     const r = await resetPasswordWithRecovery(
       forgotRecovery, forgotNewPassword,
       async () => {

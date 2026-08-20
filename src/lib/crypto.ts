@@ -537,14 +537,23 @@ export async function resetPasswordWithRecovery(
   getCloudBackup?: () => Promise<{ salt: string; ciphertext: string } | null>,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // v2.2.3 修复：本地恢复配置可能因历史多次设置/重置而残留旧数据，与用户手中
+    // 恢复码不匹配。先试本地，解不开再试云端备份，两者都失败才报错。
     let wrappedRecovery = getWrappedMKRecovery();
-    if (!wrappedRecovery && getCloudBackup) {
-      const cloud = await getCloudBackup();
-      if (cloud) wrappedRecovery = cloud;
+    let mk: Uint8Array | null = null;
+    if (wrappedRecovery) {
+      mk = await unwrapMKWithRecovery(wrappedRecovery, recoveryCode);
     }
-    if (!wrappedRecovery) return { success: false, error: '未找到恢复配置（本地与云端均无备份）' };
-    const mk = await unwrapMKWithRecovery(wrappedRecovery, recoveryCode);
-    if (!mk) return { success: false, error: '恢复码错误或恢复配置与恢复码不匹配' };
+    if (!mk && getCloudBackup) {
+      const cloud = await getCloudBackup();
+      if (cloud) {
+        wrappedRecovery = cloud;
+        mk = await unwrapMKWithRecovery(wrappedRecovery, recoveryCode);
+      }
+    }
+    if (!mk || !wrappedRecovery) {
+      return { success: false, error: '恢复码错误或恢复配置与恢复码不匹配（本地与云端均已尝试）' };
+    }
     saveWrappedMKRecovery(wrappedRecovery);
     saveRecoveryHash(await hashRecoveryCode(recoveryCode));
     localStorage.setItem(RECOVERY_BACKUP_KEY, '1');

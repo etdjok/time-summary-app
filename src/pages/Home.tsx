@@ -254,7 +254,14 @@ export default function Home() {
         <NutstoreConfig
           onClose={() => {
             setShowConfig(false);
-            setIsConnected(hasCredentials());
+            const connected = hasCredentials();
+            setIsConnected(connected);
+            // v2.3.1 修复：设置窗口内可能刚完成加密解锁/凭据恢复，
+            // 关闭时统一重新拉取数据，避免页面停留在解锁前的空列表
+            if (connected) {
+              loadEntries();
+              syncCategoriesFromNutstore();
+            }
           }}
         />
       )}

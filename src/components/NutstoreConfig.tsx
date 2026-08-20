@@ -220,6 +220,9 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     setTesting(false);
     if (lr.success) {
       setEncPassword('');
+      // v2.3.1 修复：解锁前页面读到的是密文（解析为空），解锁成功后必须重新拉取数据
+      setResult({ success: true, message: '加密会话已解锁，正在重新读取数据...' });
+      try { await loadEntries(); } catch (e) { console.error('加载数据失败:', e); }
       setResult({ success: true, message: '加密会话已解锁，可以正常读写加密数据' });
     } else {
       setResult({ success: false, message: lr.error || '解锁失败' });
@@ -242,6 +245,9 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
       setEncConfirm('');
       setCloudLocked(false);
       setEncActive(true);
+      // v2.3.1 修复：解锁成功后重新拉取数据，否则页面仍显示解锁前的空列表
+      setResult({ success: true, message: '已从云端备份恢复加密配置并解锁，正在重新读取数据...' });
+      try { await loadEntries(); } catch (e) { console.error('加载数据失败:', e); }
       setResult({ success: true, message: '已从云端备份恢复加密配置并解锁，可以正常读写加密数据' });
     } else {
       setResult({ success: false, message: r.error || '解锁失败' });
@@ -434,6 +440,8 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
         setCloudBackupError(br.error || '云端备份升级失败');
         setForgotResult({ success: true, message: `密码重置成功！但云端备份升级为双通道失败：${br.error || '未知错误'}（仍可用恢复码恢复，建议重试连接以再次备份）` });
       }
+      // v2.3.1 修复：重置成功即解锁会话，立即重新拉取数据，避免关闭弹窗后页面仍是空列表
+      try { await loadEntries(); } catch (e) { console.error('加载数据失败:', e); }
       setTimeout(() => { setShowForgotModal(false); setForgotRecovery(''); setForgotNewPassword(''); setForgotConfirm(''); setForgotResult(null); }, 2600);
     } else {
       setForgotResult({ success: false, message: r.error || '重置失败' });

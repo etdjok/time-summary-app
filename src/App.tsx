@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Home from "@/pages/Home";
-import { LoginPage, isAuthenticated } from "@/components/LoginPage";
+import { LoginPage } from "@/components/LoginPage";
+import { isAuthenticated } from "@/lib/auth";
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isAuthenticated());

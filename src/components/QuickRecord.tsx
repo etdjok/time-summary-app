@@ -16,11 +16,26 @@ const quadrants = [
   { id: 'low', label: 'Q4 不紧急不重要', icon: MinusCircle, color: 'bg-gray-500', activeColor: 'bg-gray-100 text-gray-600 border-gray-300' },
 ] as const;
 
-// 声明 Web Speech API 类型
+// 声明 Web Speech API 类型（浏览器无内置 TS 定义，按用到的最小面声明）
+interface SpeechRecognitionEventLike {
+  results: { 0: { 0: { transcript: string } } };
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
 declare global {
   interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
+    SpeechRecognition: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition: new () => SpeechRecognitionLike;
   }
 }
 
@@ -36,7 +51,7 @@ export function QuickRecord() {
   const { addEntry, loadEntries } = useSummaryStore();
   const { categories } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id || 'chat');
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   // 语音识别初始化
   const initSpeechRecognition = useCallback(() => {
@@ -49,12 +64,12 @@ export function QuickRecord() {
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       const transcript = event.results[0][0].transcript;
       setContent(prev => prev + transcript);
       setIsListening(false);
     };
-    
+
     recognition.onerror = () => {
       setIsListening(false);
     };

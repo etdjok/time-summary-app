@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown, ChevronUp, Clock, Tag, Edit2, Trash2, X, Check, Star, Heart, Flag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, CheckSquare, Square } from 'lucide-react';
-import { MarkdownEntry, FILE_TYPE_LABELS, QUADRANT_DEFS } from '../types';
-import { MarkdownPreview } from './MarkdownPreview';
+import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
 
@@ -113,7 +112,7 @@ export function EntryItem({ entry }: EntryItemProps) {
     const success = await updateEntry(entry.id, {
       content: editContent.trim(),
       type: editType,
-      priority: editPriority as any,
+      priority: editPriority,
       completed: editCompleted,
     });
     setSaving(false);

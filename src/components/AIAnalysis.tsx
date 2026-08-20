@@ -1,10 +1,10 @@
-﻿import { useState, useMemo, useRef, useEffect } from "react";
-import { Brain, CheckCircle, Circle, TrendingUp, Target, Sparkles, Calendar, AlertCircle, Send, Settings, Loader2, MessageCircle, BarChart3, Plus, Trash2, Bot, User, FileText, Clock, Database, Eye, EyeOff, Square } from "lucide-react";
+﻿import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Brain, CheckCircle, Circle, TrendingUp, Target, Sparkles, Calendar, AlertCircle, Send, Settings, Loader2, MessageCircle, BarChart3, Plus, Bot, User, Database, Eye, EyeOff, Square } from "lucide-react";
 import { useSummaryStore } from "../hooks/useSummaryStore";
 import { useCategories } from "../hooks/useCategories";
 import { FILE_TYPE_LABELS, PERIOD_LABELS } from "../types";
-import { getAIConfig, hasAIConfig, sanitizeEntriesForAI, limitChatHistory, addMessageToSession, updateSession, getSession, createSession, getActiveSessionId, setActiveSession, filterSensitiveContent, type ChatMessage, type ChatSession } from "../lib/aiSecurity";
-import { sendChatMessage, sendChatMessageStream } from "../lib/aiClient";
+import { getAIConfig, hasAIConfig, sanitizeEntriesForAI, limitChatHistory, addMessageToSession, createSession, filterSensitiveContent, type ChatMessage, type ChatSession } from "../lib/aiSecurity";
+import { sendChatMessageStream } from "../lib/aiClient";
 import { apiFetch } from "../lib/auth";
 
 import { AIConfigPanel } from "./AIConfigPanel";
@@ -33,7 +33,7 @@ const CONTEXT_OPTIONS = [
 ];
 
 export function AIAnalysis() {
-  const { getPeriodEntries, currentPeriod, updateEntry, periodType } = useSummaryStore();
+  const { getPeriodEntries, currentPeriod, updateEntry } = useSummaryStore();
   const { categories } = useCategories();
   
   const [viewMode, setViewMode] = useState<ViewMode>("analysis");
@@ -71,7 +71,7 @@ export function AIAnalysis() {
     } else {
       setChatMessages([]);
     }
-  }, [currentSession?.id]);
+  }, [currentSession]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -79,16 +79,18 @@ export function AIAnalysis() {
     }
   }, [chatMessages]);
 
-  const handleSessionChange = (session: ChatSession | null) => {
+  // useCallback：作为 SessionSidebar 的 prop，避免每次渲染新引用
+  // 触发其 loadSessions effect 反复执行（流式期间每个 chunk 都会重解析 localStorage）
+  const handleSessionChange = useCallback((session: ChatSession | null) => {
     setCurrentSession(session);
     setSidebarRefreshKey(k => k + 1);
-  };
+  }, []);
 
-  const getTypeLabel = (type: string): string => {
+  const getTypeLabel = useCallback((type: string): string => {
     const cat = categories.find(c => c.id === type);
     const cleanType = type && type.startsWith("custom_") ? type.slice(7) : type;
     return cat?.label || (type && type.startsWith("custom_") ? type.slice(7) : null) || FILE_TYPE_LABELS[type] || cleanType;
-  };
+  }, [categories]);
 
   const analysis = useMemo(() => {
     const total = entries.length;
@@ -150,7 +152,7 @@ export function AIAnalysis() {
     }
 
     return lines.join("\n");
-  }, [analysis, currentPeriod, categories]);
+  }, [analysis, currentPeriod, getTypeLabel]);
 
   const nextPlan = useMemo(() => {
     const incompleteTodos = entries.filter(e => e.type === "todo" && !e.completed);
@@ -216,8 +218,8 @@ export function AIAnalysis() {
   const getContextData = () => {
     if (contextMode === "none") return null;
     if (contextMode === "current") return sanitizeEntriesForAI(entries);
-    // 全部数据模式
-    return sanitizeEntriesForAI(entries); // 可以扩展为从坚果云加载全部
+    // 全部数据模式：使用 store 内的全量条目（不限当前周期）
+    return sanitizeEntriesForAI(useSummaryStore.getState().entries);
   };
 
   // 对话功能
@@ -347,7 +349,11 @@ export function AIAnalysis() {
     } else {
       // 非流式模式（原有逻辑）
       try {
-        const configHeader = Buffer.from(JSON.stringify(config)).toString("base64");
+        // UTF-8 安全 base64（浏览器无 Buffer）
+        const configBytes = new TextEncoder().encode(JSON.stringify(config));
+        let configBinary = '';
+        for (let i = 0; i < configBytes.length; i++) configBinary += String.fromCharCode(configBytes[i]);
+        const configHeader = btoa(configBinary);
 
         const response = await apiFetch("/api/ai/chat", {
           method: "POST",

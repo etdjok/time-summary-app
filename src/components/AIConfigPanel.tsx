@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from "react";
-import { X, Settings, Key, Link, Cpu, CheckCircle, AlertCircle, Eye, EyeOff, Loader2, Database } from "lucide-react";
-import { saveAIConfig, getAIConfig, clearAIConfig, hasAIConfig } from "../lib/aiSecurity";
+import { X, Key, Link, Cpu, CheckCircle, AlertCircle, Eye, EyeOff, Loader2, Database } from "lucide-react";
+import { saveAIConfig, getAIConfig, clearAIConfig } from "../lib/aiSecurity";
 import { testAIConnection, getAIModels } from "../lib/aiClient";
 
 interface AIConfigPanelProps {

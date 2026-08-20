@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from "react";
-import { Plus, Trash2, Edit2, Check, X, MessageSquare, Clock, Search } from "lucide-react";
+﻿import { useState, useEffect, useCallback } from "react";
+import { Plus, Trash2, Edit2, Check, MessageSquare, Clock, Search } from "lucide-react";
 import { getSessions, getActiveSessionId, setActiveSession, deleteSession, updateSession, createSession, formatSessionTime, type ChatSession } from "../lib/aiSecurity";
 
 interface SessionSidebarProps {
@@ -14,11 +14,7 @@ export function SessionSidebar({ onSessionChange, refreshKey }: SessionSidebarPr
   const [editingTitle, setEditingTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    loadSessions();
-  }, [refreshKey]);
-
-  const loadSessions = () => {
+  const loadSessions = useCallback(() => {
     const allSessions = getSessions();
     setSessions(allSessions);
     const active = getActiveSessionId();
@@ -29,7 +25,11 @@ export function SessionSidebar({ onSessionChange, refreshKey }: SessionSidebarPr
       setActiveSession(allSessions[0].id);
       onSessionChange(allSessions[0]);
     }
-  };
+  }, [onSessionChange]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [refreshKey, loadSessions]);
 
   const handleNewSession = () => {
     const session = createSession();

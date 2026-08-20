@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { List, Filter, RefreshCw, Search, X, MessageSquare, BookOpen, CheckCircle, Lightbulb, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
@@ -15,18 +15,19 @@ interface SummaryListProps {
 }
 
 export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
-  const { getPeriodEntries, loadEntries, loading } = useSummaryStore();
+  const { getPeriodEntries, loadEntries, loading, entries: allEntries } = useSummaryStore();
   const { categories } = useCategories();
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter);
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [searchScope, setSearchScope] = useState<'period' | 'all'>('period');
+
   // Sync with external filter changes
   useEffect(() => {
     setTypeFilter(initialTypeFilter);
   }, [initialTypeFilter]);
 
   const entries = getPeriodEntries();
-  
+
   const typeFilters = [
     { value: 'all', label: '全部', icon: List },
     ...categories.map(cat => ({
@@ -35,17 +36,51 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
       icon: ICON_MAP[cat.icon] || MessageSquare,
     })),
   ];
-  
-  const typeFilteredEntries = typeFilter === 'all' 
-    ? entries 
+
+  const typeFilteredEntries = typeFilter === 'all'
+    ? entries
     : entries.filter(e => e.type === typeFilter || e.categoryId === typeFilter);
-  
-  const filteredEntries = searchQuery.trim() === ''
-    ? typeFilteredEntries
-    : typeFilteredEntries.filter(e => 
-        e.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
+
+  const hasSearch = searchQuery.trim() !== '';
+  const isGlobalSearch = hasSearch && searchScope === 'all';
+
+  // 搜索词清空时重置范围，避免下次输入静默全局搜索
+  useEffect(() => {
+    if (!searchQuery.trim() && searchScope !== 'period') setSearchScope('period');
+  }, [searchQuery, searchScope]);
+
+  const lowerQuery = searchQuery.trim().toLowerCase();
+
+  // 全局搜索时忽略周期，在全量数据上检索（类型过滤仍然生效）
+  const filteredEntries = useMemo(() => {
+    if (!hasSearch) return typeFilteredEntries;
+    const source = isGlobalSearch
+      ? (typeFilter === 'all'
+          ? allEntries
+          : allEntries.filter(e => e.type === typeFilter || e.categoryId === typeFilter))
+      : typeFilteredEntries;
+    return source.filter(e =>
+      e.content.toLowerCase().includes(lowerQuery) ||
+      e.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+    );
+  }, [hasSearch, isGlobalSearch, typeFilter, typeFilteredEntries, allEntries, lowerQuery]);
+
+  // 全局搜索结果按日期倒序、组内按时间倒序，并按日期分组展示
+  const groupedEntries = useMemo(() => {
+    if (!isGlobalSearch) return null;
+    return Object.entries(
+      filteredEntries.reduce<Record<string, typeof filteredEntries>>((groups, e) => {
+        const key = e.date || '未知日期';
+        (groups[key] = groups[key] || []).push(e);
+        return groups;
+      }, {})
+    )
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, list]) => [
+        date,
+        [...list].sort((a, b) => (b.time || '').localeCompare(a.time || '')),
+      ] as [string, typeof filteredEntries]);
+  }, [isGlobalSearch, filteredEntries]);
 
   const getTypeLabel = (type: string): string => {
     // 先修正 custom_ 前缀
@@ -101,6 +136,31 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
         )}
       </div>
 
+      {/* 搜索范围开关：仅在有搜索词时显示 */}
+      {hasSearch && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-gray-400">范围</span>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setSearchScope('period')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                searchScope === 'period' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              当前周期
+            </button>
+            <button
+              onClick={() => setSearchScope('all')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                searchScope === 'all' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              全部历史
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-1.5 mb-4">
         {typeFilters.map((filter) => (
           <button
@@ -128,8 +188,27 @@ export function SummaryList({ initialTypeFilter = 'all' }: SummaryListProps) {
           <List className="w-12 h-12 mb-3 text-gray-300" />
           <p className="text-base">暂无内容</p>
           <p className="text-sm mt-1 text-gray-300">
-            {typeFilter === 'all' ? '这个周期还没有记录' : `没有${getTypeLabel(typeFilter)}类型的记录`}
+            {hasSearch
+              ? '没有匹配的记录'
+              : typeFilter === 'all'
+                ? '这个周期还没有记录'
+                : `没有${getTypeLabel(typeFilter)}类型的记录`}
           </p>
+        </div>
+      ) : isGlobalSearch && groupedEntries ? (
+        // 全局搜索：按日期分组展示
+        <div className="max-h-[60vh] overflow-y-auto -mx-2 px-2">
+          {groupedEntries.map(([date, list]) => (
+            <div key={date} className="mb-2">
+              <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 px-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
+                {date}
+                <span className="ml-1 text-gray-300 font-normal">({list.length}条)</span>
+              </div>
+              {list.map((entry, index) => (
+                <EntryItem key={`${entry.id}-${index}`} entry={entry} />
+              ))}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="max-h-[60vh] overflow-y-auto -mx-2 px-2">

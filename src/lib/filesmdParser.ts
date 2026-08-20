@@ -1,12 +1,5 @@
 import { MarkdownEntry } from '../types';
 
-const formatDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 function extractTags(content: string): string[] {
   const tagRegex = /#(\S+)/g;
   const tags: string[] = [];
@@ -126,7 +119,7 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
       const categoryId = extractCategoryId(contentToParse);
       const entryType = categoryId || 'chat';
 
-      let entryDate = currentDate;
+      const entryDate = currentDate;
 
       entries.push({
         id: `${fileName}-${entries.length}`,
@@ -222,11 +215,6 @@ export function parseChatMd(content: string, fileName: string = 'Chat.md'): Mark
         completed: isTodoStart ? isCompleted : undefined,
         rawLine: trimmed,  // 保存原始行用于精确匹配
       });
-    } else if (isEditLine && entries.length > 0) {
-      // 编辑行：合并到前一个条目
-      const prev = entries[entries.length - 1];
-      prev.content += '\n' + trimmed;
-      prev.rawLine = (prev.rawLine || '') + '\n' + trimmed;
     } else if (!isNewEntryLine(trimmed) && entries.length > 0) {
       // 延续行：合并到前一个条目
       const prev = entries[entries.length - 1];
@@ -405,7 +393,7 @@ export function parseTodoMd(content: string, fileName: string = 'Later.md'): Mar
       // 第一行包含编辑标记但是待办项：创建新条目
       const isCompleted = trimmed.startsWith('- [x]') || trimmed.startsWith('* [x]');
 
-      let cleanContent = trimmed
+      const cleanContent = trimmed
         .replace(/^[-*]\s*\[[x ]\]\s*/, '')
         .replace(/^[-*]\s+/, '');
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Settings, X, Check, AlertCircle, FolderOpen, ChevronRight, Copy, Shield } from 'lucide-react';
-import { saveCredentials, clearCredentials, hasCredentials, testConnectionWithDetails, listRootFolders, getCredentials, backupRecoveryToCloud, fetchRecoveryBackupFromCloud, getCredentialUsername, saveCredentialsSmart, hasEncryptedCredentials, getCredentialsAsync } from '../lib/nutstore';
+import { clearCredentials, hasCredentials, testConnectionWithDetails, listRootFolders, getCredentials, backupRecoveryToCloud, fetchRecoveryBackupFromCloud, getCredentialUsername, saveCredentialsSmart, getCredentialsAsync } from '../lib/nutstore';
 import {
   getEncryptSettings, saveEncryptSettings, clearEncryptSettings,
   setupEncryption, normalizeRecoveryCode,
@@ -43,18 +43,10 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
   const [encPassword, setEncPassword] = useState('');
   const [encConfirm, setEncConfirm] = useState('');
 
-  useEffect(() => {
-    const creds = getCredentials();
-    if (creds) { if (!username) setUsername(creds.username); if (!password) setPassword(creds.password); }
-  }, []);
-
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isConnected, setIsConnected] = useState(hasCredentials());
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
-  const [basePathFiles, setBasePathFiles] = useState<string[]>([]);
-  const [basePathFolders, setBasePathFolders] = useState<string[]>([]);
-  const [pathResults, setPathResults] = useState<{ path: string; status: number; files: string[]; folders: string[] }[]>([]);
   const [showFolders, setShowFolders] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
 
@@ -206,9 +198,6 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     setTesting(true);
     const testResult = await testConnectionWithDetails(b64);
     if (testResult.rootFolders) setAvailableFolders(testResult.rootFolders);
-    if (testResult.basePathFiles) setBasePathFiles(testResult.basePathFiles);
-    if (testResult.basePathFolders) setBasePathFolders(testResult.basePathFolders);
-    if (testResult.pathResults) setPathResults(testResult.pathResults);
     setShowDebug(true);
     if (testResult.success) {
       setResult({ success: true, message: '坚果云已连接，正在读取数据...' });
@@ -378,9 +367,6 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     setNutstoreBasePath(basePath);
     const testResult = await testConnectionWithDetails(basePath);
     if (testResult.rootFolders) setAvailableFolders(testResult.rootFolders);
-    if (testResult.basePathFiles) setBasePathFiles(testResult.basePathFiles);
-    if (testResult.basePathFolders) setBasePathFolders(testResult.basePathFolders);
-    if (testResult.pathResults) setPathResults(testResult.pathResults);
     setShowDebug(true);
 
     if (testResult.success) {

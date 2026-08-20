@@ -15,13 +15,14 @@ export function getPeriodForDate(date: Date, type: PeriodType): Period {
       title = `${year}年${month + 1}月${date.getDate()}日`;
       break;
 
-    case 'week':
+    case 'week': {
       const dayOfWeek = date.getDay() || 7;
       startDate = new Date(year, month, date.getDate() - dayOfWeek + 1);
       endDate = new Date(year, month, date.getDate() - dayOfWeek + 7);
       const weekNum = Math.ceil(((date.getTime() - new Date(year, 0, 1).getTime()) / 86400000 + 1) / 7);
       title = `${year}年第${weekNum}周`;
       break;
+    }
 
     case 'month':
       startDate = new Date(year, month, 1);
@@ -29,19 +30,21 @@ export function getPeriodForDate(date: Date, type: PeriodType): Period {
       title = `${year}年${month + 1}月`;
       break;
 
-    case 'quarter':
+    case 'quarter': {
       const quarter = Math.floor(month / 3) + 1;
       startDate = new Date(year, (quarter - 1) * 3, 1);
       endDate = new Date(year, quarter * 3, 0);
       title = `${year}年第${quarter}季度`;
       break;
+    }
 
-    case 'half-year':
+    case 'half-year': {
       const half = Math.floor(month / 6) + 1;
       startDate = new Date(year, (half - 1) * 6, 1);
       endDate = new Date(year, half * 6, 0);
       title = `${year}年第${half}半年`;
       break;
+    }
 
     case 'year':
       startDate = new Date(year, 0, 1);

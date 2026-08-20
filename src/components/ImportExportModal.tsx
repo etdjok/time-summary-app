@@ -8,7 +8,7 @@ interface ImportExportModalProps {
 }
 
 export function ImportExportModal({ onClose }: ImportExportModalProps) {
-  const { entries, loadEntries, nutstoreBasePath } = useSummaryStore();
+  const { entries, loadEntries } = useSummaryStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [message, setMessage] = useState('');

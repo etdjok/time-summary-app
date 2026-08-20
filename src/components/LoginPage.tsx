@@ -1,23 +1,6 @@
 import { useState } from 'react';
 import { Lock, Eye, EyeOff } from 'lucide-react';
-import { verifyPassword } from '../lib/auth';
-
-const AUTH_KEY = 'heartlight_auth';
-const AUTH_TIME_KEY = 'heartlight_auth_time';
-const SESSION_HOURS = 24;
-
-export function isAuthenticated(): boolean {
-  const auth = localStorage.getItem(AUTH_KEY);
-  const authTime = localStorage.getItem(AUTH_TIME_KEY);
-  if (!auth || !authTime) return false;
-  const hoursSinceAuth = (Date.now() - parseInt(authTime)) / (1000 * 60 * 60);
-  if (hoursSinceAuth > SESSION_HOURS) {
-    localStorage.removeItem(AUTH_KEY);
-    localStorage.removeItem(AUTH_TIME_KEY);
-    return false;
-  }
-  return true;
-}
+import { verifyPassword, markAuthenticated } from '../lib/auth';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -43,13 +26,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     verifyPassword(password)
       .then((result) => {
         if (result.success) {
-          try {
-            localStorage.setItem(AUTH_KEY, 'true');
-            localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-          } catch {
-            // iOS 隐私模式等场景 localStorage 不可用：会话状态无法持久化，
-            // 但本次登录仍可继续（刷新后需重新输入密码）
-          }
+          markAuthenticated();
           onLogin();
         } else {
           setError(result.message || '密码错误，请重试');

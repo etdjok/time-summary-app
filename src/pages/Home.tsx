@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain, CheckSquare } from 'lucide-react';
 import { version } from '../../package.json';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
@@ -12,10 +12,21 @@ import { Changelog } from '../components/Changelog';
 import { QuadrantView } from '../components/QuadrantView';
 import { HeatmapView } from '../components/HeatmapView';
 import { AIAnalysis } from '../components/AIAnalysis';
+import { HabitTracker } from '../components/HabitTracker';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { hasCredentials } from '../lib/nutstore';
 import { getPeriodForDate } from '../lib/dateUtils';
 import { syncCategoriesFromNutstore } from '../hooks/useCategories';
+
+type ViewMode = 'list' | 'quadrant' | 'heatmap' | 'habits' | 'ai';
+
+const VIEW_TABS: { mode: ViewMode; label: string; shortLabel: string; icon: typeof List }[] = [
+  { mode: 'list', label: '列表', shortLabel: '列表', icon: List },
+  { mode: 'quadrant', label: '四象限', shortLabel: '象限', icon: Grid3x3 },
+  { mode: 'heatmap', label: '热力图', shortLabel: '热图', icon: Calendar },
+  { mode: 'habits', label: '打卡', shortLabel: '打卡', icon: CheckSquare },
+  { mode: 'ai', label: 'AI分析', shortLabel: 'AI', icon: Brain },
+];
 
 export default function Home() {
   const [showConfig, setShowConfig] = useState(false);
@@ -23,7 +34,7 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'quadrant' | 'heatmap' | 'ai'>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const { loadEntries, entries } = useSummaryStore();
 
@@ -97,7 +108,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
-      <div className="max-w-2xl mx-auto px-3 py-4">
+      <div className="max-w-2xl lg:max-w-6xl mx-auto px-3 py-4 lg:px-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-gray-800">心光</h1>
@@ -157,97 +168,80 @@ export default function Home() {
           </div>
         </div>
 
-        {!isConnected && (
-          <div className="bg-white rounded-xl shadow p-4 mb-3 text-center">
-            <Cloud className="w-12 h-12 text-amber-300 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">连接坚果云</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              连接坚果云后，自动读取你在 files.md 中记录的内容，按时间周期汇总展示
-            </p>
-            <button
-              onClick={() => setShowConfig(true)}
-              className="px-6 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors font-medium text-sm"
-            >
-              立即配置
-            </button>
-          </div>
-        )}
+        {/* 桌面双栏：左侧录入+统计固定，右侧内容区；移动端保持上下单列 */}
+        <div className="lg:grid lg:grid-cols-[400px_minmax(0,1fr)] lg:gap-6 lg:items-start">
+          {/* 左栏 */}
+          <div className="lg:sticky lg:top-4">
+            {!isConnected && (
+              <div className="bg-white rounded-xl shadow p-4 mb-3 text-center">
+                <Cloud className="w-12 h-12 text-amber-300 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">连接坚果云</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  连接坚果云后，自动读取你在 files.md 中记录的内容，按时间周期汇总展示
+                </p>
+                <button
+                  onClick={() => setShowConfig(true)}
+                  className="px-6 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors font-medium text-sm"
+                >
+                  立即配置
+                </button>
+              </div>
+            )}
 
-        {isConnected && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-3 flex items-center gap-2">
-            <Cloud className="w-5 h-5 text-green-600 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-green-700">坚果云已连接</p>
-              <p className="text-xs text-green-600/70">自动同步 files.md 笔记</p>
+            {isConnected && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-3 flex items-center gap-2">
+                <Cloud className="w-5 h-5 text-green-600 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-700">坚果云已连接</p>
+                  <p className="text-xs text-green-600/70">自动同步 files.md 笔记</p>
+                </div>
+                <a
+                  href="https://app.files.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-amber-600 bg-white rounded-lg hover:bg-amber-50 transition-colors"
+                >
+                  打开 files.md
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+
+            {isConnected && <QuickRecord />}
+
+            <div className="mb-4">
+              <PeriodNavigation />
+              <StatsCard onTypeClick={handleTypeClick} compact={true} />
             </div>
-            <a
-              href="https://app.files.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 px-3 py-1.5 text-xs text-amber-600 bg-white rounded-lg hover:bg-amber-50 transition-colors"
-            >
-              打开 files.md
-              <ExternalLink className="w-3 h-3" />
-            </a>
           </div>
-        )}
 
-        {isConnected && <QuickRecord />}
+          {/* 右栏：视图内容 */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 bg-white rounded-xl shadow-sm p-1 mb-4">
+              {VIEW_TABS.map(({ mode, label, shortLabel, icon: Icon }) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-sm font-medium transition-all ${
+                    viewMode === mode
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">{label}</span>
+                  <span className="sm:hidden">{shortLabel}</span>
+                </button>
+              ))}
+            </div>
 
-        <PeriodNavigation />
-        <StatsCard onTypeClick={handleTypeClick} compact={true} />
-
-        <div className="flex items-center gap-1 bg-white rounded-xl shadow-sm p-1 mb-4">
-          <button
-            onClick={() => setViewMode('list')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-              viewMode === 'list'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
-            }`}
-          >
-            <List className="w-4 h-4" />
-            列表
-          </button>
-          <button
-            onClick={() => setViewMode('quadrant')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-              viewMode === 'quadrant'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
-            }`}
-          >
-            <Grid3x3 className="w-4 h-4" />
-            四象限
-          </button>
-          <button
-            onClick={() => setViewMode('heatmap')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-              viewMode === 'heatmap'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            热力图
-          </button>
-          <button
-            onClick={() => setViewMode('ai')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-              viewMode === 'ai'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'text-gray-500 hover:bg-amber-50 hover:text-amber-600'
-            }`}
-          >
-            <Brain className="w-4 h-4" />
-            AI分析
-          </button>
+            {viewMode === 'list' && <SummaryList initialTypeFilter={typeFilter} />}
+            {viewMode === 'quadrant' && <QuadrantView />}
+            {viewMode === 'heatmap' && <HeatmapView onSelectDate={handleSelectDate} />}
+            {viewMode === 'habits' && <HabitTracker />}
+            {viewMode === 'ai' && <AIAnalysis />}
+          </div>
         </div>
-
-        {viewMode === 'list' && <SummaryList initialTypeFilter={typeFilter} />}
-        {viewMode === 'quadrant' && <QuadrantView />}
-        {viewMode === 'heatmap' && <HeatmapView onSelectDate={handleSelectDate} />}
-        {viewMode === 'ai' && <AIAnalysis />}
 
         <div className="text-center mt-8 pb-6">
           <p className="text-xs text-gray-400">

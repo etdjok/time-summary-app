@@ -4,6 +4,45 @@ export { DEFAULT_PASSWORD };
 
 const AUTH_TOKEN_KEY = 'heartlight_auth_token';
 
+// 登录会话有效期（小时）
+const SESSION_HOURS = 24;
+const AUTH_KEY = 'heartlight_auth';
+const AUTH_TIME_KEY = 'heartlight_auth_time';
+
+// 判断本地登录会话是否仍有效（过期自动清除）
+export function isAuthenticated(): boolean {
+  let auth: string | null = null;
+  let authTime: string | null = null;
+  try {
+    auth = localStorage.getItem(AUTH_KEY);
+    authTime = localStorage.getItem(AUTH_TIME_KEY);
+  } catch {
+    // iOS 隐私模式等场景 localStorage 不可用：视为未登录
+    return false;
+  }
+  if (!auth || !authTime) return false;
+  const hoursSinceAuth = (Date.now() - parseInt(authTime)) / (1000 * 60 * 60);
+  if (hoursSinceAuth > SESSION_HOURS) {
+    try {
+      localStorage.removeItem(AUTH_KEY);
+      localStorage.removeItem(AUTH_TIME_KEY);
+    } catch { /* 忽略 */ }
+    return false;
+  }
+  return true;
+}
+
+// 登录成功后写入本地会话标记
+export function markAuthenticated(): void {
+  try {
+    localStorage.setItem(AUTH_KEY, 'true');
+    localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
+  } catch {
+    // iOS 隐私模式等场景 localStorage 不可用：会话状态无法持久化，
+    // 但本次登录仍可继续（刷新后需重新输入密码）
+  }
+}
+
 // v2.2 登录结果区分网络错误与密码错误，避免误导排障方向
 export interface VerifyResult {
   success: boolean;

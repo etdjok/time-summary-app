@@ -471,10 +471,10 @@ export async function setupEncryption(
     saveEncryptSettings({ enabled: true });
     setSessionMK(mk);
     return { success: true, recoveryCode };
-  } catch (e: any) {
+  } catch (e) {
     restoreEncStorage(snapshot);
     if (prevMK) setSessionMK(prevMK); else clearSessionMK();
-    return { success: false, error: e.message || '设置失败' };
+    return { success: false, error: e instanceof Error ? e.message : '设置失败' };
   }
 }
 
@@ -503,7 +503,7 @@ export async function loginWithPassword(
       if (r.success && r.migrated && r.migrated > 0) { migrated = true; migrationCount = r.migrated; }
     }
     return { success: true, migrated, migrationCount };
-  } catch (e: any) { clearSessionMK(); return { success: false, error: e.message || '登录失败' }; }
+  } catch (e) { clearSessionMK(); return { success: false, error: e instanceof Error ? e.message : '登录失败' }; }
 }
 
 // ========== 修改加密密码（旧密码验证 → 新密码重新包裹 MK，MK 不变） ==========
@@ -527,7 +527,7 @@ export async function changeEncryptionPassword(
     await computeAndSaveLoginHash(newPassword);
     setSessionMK(mk);
     return { success: true };
-  } catch (e: any) { return { success: false, error: e.message || '修改失败' }; }
+  } catch (e) { return { success: false, error: e instanceof Error ? e.message : '修改失败' }; }
 }
 
 // ========== 忘记密码：恢复码重置（支持从云端拉取恢复备份） ==========
@@ -563,7 +563,7 @@ export async function resetPasswordWithRecovery(
     saveEncryptSettings({ enabled: true, recoveryShown: true });
     setSessionMK(mk);
     return { success: true };
-  } catch (e: any) { return { success: false, error: e.message || '重置失败' }; }
+  } catch (e) { return { success: false, error: e instanceof Error ? e.message : '重置失败' }; }
 }
 
 // ========== v1.19 迁移 ==========
@@ -590,7 +590,7 @@ export async function migrateFromV19(
       await migrateOldToNewFormat(basePath, oldPassword, (c, t) => onProgress?.(`迁移 ${c}/${t}...`));
     }
     return { success: true, recoveryCode };
-  } catch (e: any) { return { success: false, error: e.message || '迁移失败' }; }
+  } catch (e) { return { success: false, error: e instanceof Error ? e.message : '迁移失败' }; }
 }
 
 // ========== v2.2：开启加密时迁移云端已有明文文件 ==========

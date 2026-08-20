@@ -47,6 +47,14 @@ export async function sendChatMessage(
   return response.json();
 }
 
+// UTF-8 安全的 base64 编码（浏览器无 Buffer，且 btoa 不能直接处理中文）
+function toBase64Utf8(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 // 发送流式对话请求（优化版本）
 export function sendChatMessageStream(
   messages: ChatMessage[],
@@ -56,9 +64,9 @@ export function sendChatMessageStream(
   sessionId?: string
 ): AbortController {
   const controller = createAbortController();
-  
+
   // 构建配置头
-  const configHeader = Buffer.from(JSON.stringify(config)).toString("base64");
+  const configHeader = toBase64Utf8(JSON.stringify(config));
   
   const body = {
     messages,
@@ -118,7 +126,7 @@ export async function getAIModels(): Promise<Array<{ provider: string; name: str
     if (response.ok) {
       const data = await response.json();
       const models = data.models || [];
-      return models.map((m: any) => {
+      return models.map((m: string | { provider: string; name: string; label: string }) => {
         if (typeof m === "string") {
           return { provider: "custom", name: m, label: m };
         }

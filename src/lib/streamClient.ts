@@ -48,7 +48,6 @@ export async function sendStreamRequest(
 ): Promise<void> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let retryCount = 0;
-  let lastError: Error | null = null;
 
   const executeRequest = async (): Promise<void> => {
     try {
@@ -178,8 +177,7 @@ export async function sendStreamRequest(
          err.message.includes("连接"))
       ) {
         retryCount++;
-        lastError = err;
-        
+
         // 等待重试延迟
         await new Promise(resolve => setTimeout(resolve, opts.retryDelay * retryCount));
         

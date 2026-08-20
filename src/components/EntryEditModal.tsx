@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Save, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText } from 'lucide-react';
-import { MarkdownEntry, FILE_TYPE_LABELS, STATUS_OPTIONS, STATUS_LABELS, PRIORITY_LABELS } from '../types';
+import { MarkdownEntry, STATUS_OPTIONS } from '../types';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 
 interface EntryEditModalProps {

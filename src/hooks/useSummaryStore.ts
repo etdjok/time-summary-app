@@ -1,7 +1,7 @@
 ﻿import { create } from 'zustand';
 import { MarkdownEntry, Period, PeriodType } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
-import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, appendToIdeaMd, appendToNoteMd, appendToFile, deleteFile, readFile, writeFile } from '../lib/nutstore';
+import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, appendToIdeaMd, appendToNoteMd, appendToFile, readFile, writeFile } from '../lib/nutstore';
 
 interface SummaryStore {
   entries: MarkdownEntry[];
@@ -140,7 +140,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
   periodType: 'week',
   loading: false,
   error: null,
-  nutstoreBasePath: '/我的坚果云/笔记',
+  nutstoreBasePath: (() => {
+    try { return (localStorage.getItem('nutstore_base_path') || '').trim() || '/我的坚果云/笔记'; }
+    catch { return '/我的坚果云/笔记'; }
+  })(),
 
   setPeriodType: (type: PeriodType) => {
     const newPeriod = getPeriodForDate(new Date(), type);
@@ -204,6 +207,9 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
   },
 
   setNutstoreBasePath: (path: string) => {
+    // 持久化到 localStorage，与 _categories.json/_habits.json 等读取方保持同一来源，
+    // 避免刷新后 basePath 回退默认值、条目与配置/打卡数据目录脱节
+    try { localStorage.setItem('nutstore_base_path', path); } catch { /* iOS 隐私模式等场景忽略 */ }
     set({ nutstoreBasePath: path });
   },
 
@@ -265,29 +271,10 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     const lines = readResult.content.split('\n');
     const updatedLines: string[] = [];
 
-    const isNewEntry = (l: string): boolean => {
-      const t = l.trim();
-      if (!t) return true;
-      // 编辑行：包含 [编辑]、[已编辑] 标记，或多个时间戳（旧格式）
-      if (t.includes('[编辑]') || t.includes('[已编辑')) return false;
-      const tsMatches = t.match(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/g);
-      if (tsMatches && tsMatches.length > 1) return false;
-      if (t.match(/^##\s/)) return true;
-      if (t.match(/^###?\s/)) return true;
-      if (t.match(/^\d{1,2}:\d{2}\s/)) return true;
-      if (t.match(/^[-*]\s*\[[x ]\]/)) return true;
-      if (t.match(/^[-*]\s+/)) return true;
-      if (t.match(/^\d+\.\s/)) return true;
-      // 新格式原始条目：YYYY-MM-DD HH:MM 开头
-      if (t.match(/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/)) return true;
-      return false;
-    };
-
     let i = 0;
     let editApplied = false;
     while (i < lines.length) {
       const line = lines[i];
-      const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
       const todoMatch = line.match(/^- \[([ x])\]\s+(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+)?(\d{1,2}:\d{2})\s+(.+)$/);
 
       const isTargetLine = matchEntryLine(line, entry, true);
@@ -418,9 +405,7 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     let deleted = false;
     while (i < lines.length) {
       const line = lines[i];
-      const timeMatch = line.match(/^(\d{1,2}:\d{2})\s+(.+)$/);
-      const todoMatch = line.match(/^- \[([ x])\]\s+(\d{1,2}:\d{2})\s+(.+)$/);
-      
+
       const isTargetLine = matchEntryLine(line, entry);
       
       if (isTargetLine && !deleted) {

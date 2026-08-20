@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Lock, Pencil } from 'lucide-react';
 import { changePassword } from '../lib/auth';
-import { useCategories, COLOR_OPTIONS, ICON_OPTIONS } from '../hooks/useCategories';
+import { useCategories, COLOR_OPTIONS, ICON_OPTIONS, type Category } from '../hooks/useCategories';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText,
@@ -27,7 +27,6 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
   const [newLabel, setNewLabel] = useState('');
   const [newIcon, setNewIcon] = useState('Star');
   const [newColor, setNewColor] = useState('bg-blue-500');
-  const [newTarget, setNewTarget] = useState<'chat' | 'todo' | 'journal' | 'idea' | 'note'>('chat');
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -54,7 +53,7 @@ export function CategoryManager({ onClose }: CategoryManagerProps) {
   const [editTarget, setEditTarget] = useState<string>('chat');
 
   // v1.18.2: 编辑时自动修正 label，从 id 提取真实名称
-  const startEdit = (cat: any) => {
+  const startEdit = (cat: Category) => {
     const fixedLabel = (cat.label && cat.label.startsWith('custom_'))
       ? (cat.id.startsWith('custom_') ? cat.id.slice(7) : cat.label.slice(7))
       : cat.label;

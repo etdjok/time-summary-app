@@ -440,7 +440,15 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
       setCloudBackupOk(true);
       setCloudBackupError('');
       setForgotResult({ success: true, message: '密码重置成功！请牢记新密码。' });
-      setTimeout(() => { setShowForgotModal(false); setForgotRecovery(''); setForgotNewPassword(''); setForgotConfirm(''); setForgotResult(null); }, 2000);
+      // v2.2.4：旧格式云端备份（仅恢复码通道）自动升级为双通道（恢复码+密码），
+      // 下次清缓存/换设备凭新密码即可直接恢复，无需再翻恢复码
+      const br = await backupRecoveryToCloud(basePath);
+      if (!br.success) {
+        setCloudBackupOk(false);
+        setCloudBackupError(br.error || '云端备份升级失败');
+        setForgotResult({ success: true, message: `密码重置成功！但云端备份升级为双通道失败：${br.error || '未知错误'}（仍可用恢复码恢复，建议重试连接以再次备份）` });
+      }
+      setTimeout(() => { setShowForgotModal(false); setForgotRecovery(''); setForgotNewPassword(''); setForgotConfirm(''); setForgotResult(null); }, 2600);
     } else {
       setForgotResult({ success: false, message: r.error || '重置失败' });
     }

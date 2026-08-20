@@ -14,6 +14,15 @@ interface ChangeItem {
 const changelogData: ChangeItem[] = [
   {
     date: '2026-08-20',
+    version: 'v2.2.4',
+    title: '恢复码重置后云端备份自动升级双通道',
+    changes: [
+      '恢复码重置成功后，旧格式云端备份（仅恢复码通道）自动升级为双通道（恢复码+密码）',
+      '此后清缓存/换设备凭加密密码即可直接恢复，无需再翻恢复码',
+    ],
+  },
+  {
+    date: '2026-08-20',
     version: 'v2.2.3',
     title: '强制重置与恢复码云端回退修复',
     changes: [

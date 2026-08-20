@@ -484,13 +484,17 @@ export async function loginWithPassword(
   password: string, basePath?: string, onProgress?: (msg: string) => void,
 ): Promise<{ success: boolean; migrated?: boolean; migrationCount?: number; error?: string }> {
   try {
-    onProgress?.('验证密码...');
-    if (!(await verifyLoginPassword(password))) return { success: false, error: '密码错误' };
-    onProgress?.('解密主密钥...');
     const wrappedMK = getWrappedMK();
     if (!wrappedMK) return { success: false, error: '未找到加密配置' };
+    onProgress?.('验证密码...');
+    // v2.2.1 修复：本地登录哈希可能因历史版本残留与真实密码不一致（哈希不匹配≠密码错误）。
+    // 以 AES-GCM 解密主密钥为权威校验（认证加密，解密成功即密码正确），哈希失败时修复哈希，
+    // 避免旧版本升级用户"密码正确却永远被拒"的死锁。
+    const hashOk = await verifyLoginPassword(password);
+    onProgress?.('解密主密钥...');
     const mk = await unwrapMasterKey(wrappedMK, password);
-    if (!mk) return { success: false, error: '主密钥解密失败' };
+    if (!mk) return { success: false, error: '密码错误' };
+    if (!hashOk) { saveLoginSalt(); await computeAndSaveLoginHash(password); }
     setSessionMK(mk);
     let migrated = false, migrationCount = 0;
     if (basePath) {
@@ -512,7 +516,7 @@ export async function changeEncryptionPassword(
     if (newPassword === currentPassword) return { success: false, error: '新密码不能与当前密码相同' };
     let mk = getSessionMK();
     if (!mk) {
-      if (!(await verifyLoginPassword(currentPassword))) return { success: false, error: '当前密码错误' };
+      // v2.2.1：与 loginWithPassword 一致，以主密钥 GCM 解密为权威校验，不再依赖可能残留的本地哈希
       const wrappedMK = getWrappedMK();
       if (!wrappedMK) return { success: false, error: '未找到加密配置' };
       mk = await unwrapMasterKey(wrappedMK, currentPassword);

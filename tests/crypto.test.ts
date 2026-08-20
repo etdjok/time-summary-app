@@ -19,6 +19,8 @@ import {
   unlockWithCloudBackup,
   encryptExistingFiles,
   clearEncryptSettings,
+  verifyLoginPassword,
+  changeEncryptionPassword,
   clearSessionMK,
   getSessionMK,
   ENC_MAGIC_NEW,
@@ -260,5 +262,41 @@ describe('设置失败回滚（v2.2）', () => {
     const before = localStorage.getItem('xinguang_mk_pw');
     expect(before).toBeTruthy();
     expect(before).not.toBe(snapshot); // 新密钥应不同
+  });
+});
+
+describe('登录哈希残留容错（v2.2.1）', () => {
+  it('本地登录哈希为旧版本残留时，正确密码仍可解锁并自动修复哈希', async () => {
+    await setupEncryption(TEST_PASSWORD);
+    clearSessionMK();
+    // 模拟 v1.20.1 升级场景：localStorage 中的登录哈希与真实密码不一致
+    localStorage.setItem('xinguang_login_hash', 'stale-hash-from-old-version');
+    const r = await loginWithPassword(TEST_PASSWORD);
+    expect(r.success).toBe(true);
+    expect(getSessionMK()).not.toBeNull();
+    // 哈希应已被修复为当前密码的哈希
+    expect(await verifyLoginPassword(TEST_PASSWORD)).toBe(true);
+  });
+
+  it('哈希残留时错误密码依旧被拒', async () => {
+    await setupEncryption(TEST_PASSWORD);
+    clearSessionMK();
+    localStorage.setItem('xinguang_login_hash', 'stale-hash-from-old-version');
+    const r = await loginWithPassword('wrong-password');
+    expect(r.success).toBe(false);
+    expect(r.error).toBe('密码错误');
+    expect(getSessionMK()).toBeNull();
+  });
+
+  it('修改密码不依赖本地哈希，以主密钥解密为准', async () => {
+    await setupEncryption(TEST_PASSWORD);
+    clearSessionMK();
+    localStorage.setItem('xinguang_login_hash', 'stale-hash-from-old-version');
+    const r = await changeEncryptionPassword(TEST_PASSWORD, 'new-password-456');
+    expect(r.success).toBe(true);
+    // 旧密码不再有效，新密码可解锁
+    expect((await loginWithPassword(TEST_PASSWORD)).success).toBe(false);
+    clearSessionMK();
+    expect((await loginWithPassword('new-password-456')).success).toBe(true);
   });
 });

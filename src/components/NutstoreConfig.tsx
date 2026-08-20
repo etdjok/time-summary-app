@@ -112,6 +112,20 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // v2.3.1 修复：解锁成功后重新检查云端备份状态。
+  // "用密码解锁"流程正是靠云端备份完成的（备份必然存在），但原代码不回写
+  // cloudBackupOk，导致面板残留"恢复密钥云端备份异常：未备份"的误报。
+  const refreshCloudBackupStatus = async () => {
+    const r = await fetchRecoveryBackupFromCloud(basePath);
+    if (r.success && r.wrapped) {
+      setCloudBackupOk(true);
+      setCloudBackupError('');
+    } else {
+      setCloudBackupOk(false);
+      setCloudBackupError(r.error === '文件不存在' ? '' : (r.error || ''));
+    }
+  };
+
   const handleChangePassword = async () => {
     setChangeBusy(true);
     setChangeResult(null);
@@ -223,6 +237,7 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
       // v2.3.1 修复：解锁前页面读到的是密文（解析为空），解锁成功后必须重新拉取数据
       setResult({ success: true, message: '加密会话已解锁，正在重新读取数据...' });
       try { await loadEntries(); } catch (e) { console.error('加载数据失败:', e); }
+      await refreshCloudBackupStatus();
       setResult({ success: true, message: '加密会话已解锁，可以正常读写加密数据' });
     } else {
       setResult({ success: false, message: lr.error || '解锁失败' });
@@ -248,6 +263,7 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
       // v2.3.1 修复：解锁成功后重新拉取数据，否则页面仍显示解锁前的空列表
       setResult({ success: true, message: '已从云端备份恢复加密配置并解锁，正在重新读取数据...' });
       try { await loadEntries(); } catch (e) { console.error('加载数据失败:', e); }
+      await refreshCloudBackupStatus();
       setResult({ success: true, message: '已从云端备份恢复加密配置并解锁，可以正常读写加密数据' });
     } else {
       setResult({ success: false, message: r.error || '解锁失败' });

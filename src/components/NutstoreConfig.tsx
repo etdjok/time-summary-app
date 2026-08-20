@@ -258,6 +258,29 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     }
   };
 
+  // v2.2 手动迁移：加密云端已有的明文历史文件（供旧版本升级用户补加密）
+  const handleMigrate = async () => {
+    if (!hasSessionMK()) { setResult({ success: false, message: '请先解锁加密会话' }); return; }
+    setMigrating(true);
+    setMigrationStats(null);
+    setResult({ success: true, message: '正在扫描云端历史文件...' });
+    const mr = await encryptExistingFiles(basePath || '/我的坚果云/笔记', (cur, total) => {
+      setResult({ success: true, message: `正在加密云端历史文件 ${cur}/${total}...` });
+    });
+    setMigrating(false);
+    if (mr.success && mr.stats) {
+      setMigrationStats(mr.stats);
+      const s = mr.stats;
+      const parts = [`新加密 ${s.migrated} 个`];
+      if (s.alreadyEncrypted > 0) parts.push(`已加密 ${s.alreadyEncrypted} 个`);
+      if (s.oldFormat > 0) parts.push(`旧格式 ${s.oldFormat} 个（登录时自动迁移）`);
+      if (s.failed.length > 0) parts.push(`失败 ${s.failed.length} 个`);
+      setResult({ success: s.failed.length === 0, message: `云端历史文件加密完成：${parts.join('，')}` });
+    } else {
+      setResult({ success: false, message: `历史文件迁移加密失败：${mr.error || '未知错误'}` });
+    }
+  };
+
   // v2.2 强制放弃云端旧加密数据（需二次确认），进入全新设置流程
   const handleForceReset = () => {
     if (!confirmForceReset) { setConfirmForceReset(true); return; }
@@ -507,6 +530,17 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
                           className="w-full py-2 px-3 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                           解锁会话
                         </button>
+                      </div>
+                    )}
+                    {hasSessionMK() && (
+                      <div className="space-y-2">
+                        <button type="button" onClick={handleMigrate} disabled={migrating}
+                          className="w-full py-2 px-3 bg-green-50 text-green-700 text-sm font-medium rounded-xl hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                          {migrating ? '正在加密云端历史文件...' : '加密云端历史明文文件'}
+                        </button>
+                        <p className="text-[11px] text-green-600/80 leading-relaxed">
+                          将云端（含 journal/brain 子目录）所有明文 .md 笔记加密为密文，已加密文件自动跳过。建议执行一次，确保坚果云网页端看不到笔记内容。
+                        </p>
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 text-xs">

@@ -18,6 +18,16 @@ export default defineConfig({
   build: {
     sourcemap: 'hidden',
     outDir: 'dist',
+    // v2.2 代码分割：vendor 拆分为独立 chunk，加快首屏加载（尤其移动端）
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'vendor-crypto': ['@noble/ciphers', '@noble/hashes'],
+        },
+      },
+    },
   },
   plugins: [
     react({

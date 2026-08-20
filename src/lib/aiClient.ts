@@ -1,5 +1,6 @@
 ﻿import type { ChatMessage, AIConfig } from "./aiSecurity";
 import { sendStreamRequest, createAbortController } from "./streamClient";
+import { apiFetch } from "./auth";
 
 const API_BASE = "/api/ai";
 
@@ -32,7 +33,7 @@ export async function sendChatMessage(
   context?: unknown,
   sessionId?: string
 ): Promise<ChatResponse> {
-  const response = await fetch(`${API_BASE}/chat`, {
+  const response = await apiFetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, context, sessionId }),
@@ -95,7 +96,7 @@ export async function testAIConnection(config: AIConfig): Promise<{
   success: boolean;
   message: string;
 }> {
-  const response = await fetch(`${API_BASE}/test`, {
+  const response = await apiFetch(`${API_BASE}/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ config }),
@@ -113,7 +114,7 @@ export async function testAIConnection(config: AIConfig): Promise<{
 // 获取 AI 支持的模型列表
 export async function getAIModels(): Promise<Array<{ provider: string; name: string; label: string }>> {
   try {
-    const response = await fetch(`${API_BASE}/models`);
+    const response = await apiFetch(`${API_BASE}/models`);
     if (response.ok) {
       const data = await response.json();
       const models = data.models || [];

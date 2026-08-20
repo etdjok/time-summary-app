@@ -5,6 +5,7 @@ import { useCategories } from "../hooks/useCategories";
 import { FILE_TYPE_LABELS, PERIOD_LABELS } from "../types";
 import { getAIConfig, hasAIConfig, sanitizeEntriesForAI, limitChatHistory, addMessageToSession, updateSession, getSession, createSession, getActiveSessionId, setActiveSession, filterSensitiveContent, type ChatMessage, type ChatSession } from "../lib/aiSecurity";
 import { sendChatMessage, sendChatMessageStream } from "../lib/aiClient";
+import { apiFetch } from "../lib/auth";
 
 import { AIConfigPanel } from "./AIConfigPanel";
 import { SessionSidebar } from "./SessionSidebar";
@@ -348,7 +349,7 @@ export function AIAnalysis() {
       try {
         const configHeader = Buffer.from(JSON.stringify(config)).toString("base64");
 
-        const response = await fetch("/api/ai/chat", {
+        const response = await apiFetch("/api/ai/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

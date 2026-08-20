@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
+import { pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
 import net from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +18,45 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// v2.2 API 鉴权开关：默认关闭（行为与 v2.1 完全一致，零影响）。
+// 开启方式：启动前设置环境变量 XINGUANG_API_AUTH=on（如局域网内有不可信设备时）。
+// 开启后除豁免端点外的所有 /api/* 请求需携带登录时下发的 x-auth-token 头。
+const API_AUTH_ENABLED = process.env.XINGUANG_API_AUTH === 'on';
+const API_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const AUTH_EXEMPT_PATHS = new Set([
+  '/health', '/version', '/auth/verify', '/auth/change-password',
+]);
+const apiSessions = new Map(); // token -> 签发时间
+
+function issueApiToken() {
+  const token = randomBytes(32).toString('hex');
+  apiSessions.set(token, Date.now());
+  // 惰性清理：签发时顺手清除过期会话，防止长期运行的内存缓慢增长
+  if (apiSessions.size > 1000) {
+    const now = Date.now();
+    for (const [t, ts] of apiSessions) {
+      if (now - ts > API_SESSION_TTL_MS) apiSessions.delete(t);
+    }
+  }
+  return token;
+}
+
+app.use('/api', (req, res, next) => {
+  if (!API_AUTH_ENABLED || AUTH_EXEMPT_PATHS.has(req.path)) return next();
+  const token = req.headers['x-auth-token'];
+  if (typeof token === 'string' && token) {
+    const issued = apiSessions.get(token);
+    if (issued !== undefined) {
+      if (Date.now() - issued <= API_SESSION_TTL_MS) return next();
+      apiSessions.delete(token);
+    }
+  }
+  res.status(401).json({ error: '未授权：请先登录' });
+});
+if (API_AUTH_ENABLED) {
+  console.log('[心光] API 鉴权已开启（XINGUANG_API_AUTH=on），未携带有效令牌的接口请求将被拒绝');
+}
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 app.use(express.static(DIST_DIR, {
@@ -47,63 +87,133 @@ function checkPortInUse(port) {
 
 async function ensurePortAvailable(port) {
   const inUse = await checkPortInUse(port);
-  if (inUse) {
-    console.log(`[心光] 端口 ${port} 已被占用，正在释放...`);
-    try {
-      const result = execSync(`netstat -ano | findstr ":${port} "`, { encoding: 'utf-8', timeout: 5000 });
-      const lines = result.trim().split('\n').filter(Boolean);
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && pid !== '0') {
-          try {
-            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore', timeout: 3000 });
-            console.log(`[心光] 已终止旧进程 (PID: ${pid})`);
-            await new Promise(r => setTimeout(r, 500));
-          } catch (e) {
-            console.error(`[心光] 无法终止进程 PID ${pid}:`, e.message);
-          }
+  if (!inUse) return;
+  // v2.2 跨平台：自动释放仅支持 Windows；其他平台给出明确提示后退出
+  if (process.platform !== 'win32') {
+    console.error(`[心光] 端口 ${port} 已被占用。请手动结束占用进程后重启（可用命令查找：lsof -i :${port}）`);
+    process.exit(1);
+  }
+  console.log(`[心光] 端口 ${port} 已被占用，正在释放...`);
+  try {
+    const result = execSync(`netstat -ano | findstr ":${port} "`, { encoding: 'utf-8', timeout: 5000 });
+    const lines = result.trim().split('\n').filter(Boolean);
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      const pid = parts[parts.length - 1];
+      if (pid && pid !== '0') {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore', timeout: 3000 });
+          console.log(`[心光] 已终止旧进程 (PID: ${pid})`);
+          await new Promise(r => setTimeout(r, 500));
+        } catch (e) {
+          console.error(`[心光] 无法终止进程 PID ${pid}:`, e.message);
         }
       }
-    } catch (e) {
-      console.error(`[心光] 端口 ${port} 被占用，但无法自动释放:`, e.message);
     }
+  } catch (e) {
+    console.error(`[心光] 端口 ${port} 被占用，但无法自动释放:`, e.message);
   }
 }
 
 
-// 服务器端密码存储
+// 服务器端密码存储（v2.2 起默认 PBKDF2 哈希，兼容旧明文格式并自动升级）
 const PASSWORD_FILE = path.join(__dirname, 'password.json');
 const DEFAULT_PASSWORD = 'xinguang2026';
+const PBKDF2_ITERATIONS = 100000;
 
-function getServerPassword() {
-  try {
-    if (existsSync(PASSWORD_FILE)) {
-      const data = JSON.parse(readFileSync(PASSWORD_FILE, 'utf-8'));
-      return data.password || DEFAULT_PASSWORD;
-    }
-  } catch {}
-  return DEFAULT_PASSWORD;
+function hashPassword(pw) {
+  const salt = randomBytes(16).toString('hex');
+  const hash = pbkdf2Sync(pw, salt, PBKDF2_ITERATIONS, 32, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
 }
 
-function setServerPassword(password) {
-  try { writeFileSync(PASSWORD_FILE, JSON.stringify({ password }), 'utf-8'); } catch (e) { console.error('写入密码文件失败:', e.message); }
+function verifyPasswordHash(pw, stored) {
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
+  const calc = pbkdf2Sync(pw, salt, PBKDF2_ITERATIONS, 32, 'sha256').toString('hex');
+  return timingSafeEqual(Buffer.from(calc, 'hex'), Buffer.from(hash, 'hex'));
+}
+
+function loadPasswordRecord() {
+  try {
+    if (existsSync(PASSWORD_FILE)) return JSON.parse(readFileSync(PASSWORD_FILE, 'utf-8'));
+  } catch { console.error('[心光] 读取密码文件失败，回退默认密码'); }
+  return null;
+}
+
+function setServerPassword(pw) {
+  try { writeFileSync(PASSWORD_FILE, JSON.stringify({ hash: hashPassword(pw) }), 'utf-8'); }
+  catch (e) { console.error('写入密码文件失败:', e.message); }
+}
+
+function verifyServerPassword(pw) {
+  const rec = loadPasswordRecord();
+  if (!rec) return pw === DEFAULT_PASSWORD;
+  if (typeof rec.hash === 'string') return verifyPasswordHash(pw, rec.hash);
+  if (rec.password !== undefined) {
+    const ok = pw === rec.password;
+    if (ok) setServerPassword(pw); // 旧明文验证成功，自动升级为哈希存储
+    return ok;
+  }
+  return pw === DEFAULT_PASSWORD;
+}
+
+// v2.2 登录限流：同一来源 15 分钟内最多 10 次失败，防止暴力破解
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  return req.socket.remoteAddress || 'unknown';
+}
+
+function checkLoginRateLimit(ip) {
+  const now = Date.now();
+  const list = (loginAttempts.get(ip) || []).filter(t => now - t < LOGIN_WINDOW_MS);
+  loginAttempts.set(ip, list);
+  if (list.length >= LOGIN_MAX_FAILURES) {
+    return { allowed: false, waitSec: Math.ceil((LOGIN_WINDOW_MS - (now - list[0])) / 1000) };
+  }
+  return { allowed: true };
+}
+
+function recordFailedLogin(ip) {
+  const list = loginAttempts.get(ip) || [];
+  list.push(Date.now());
+  loginAttempts.set(ip, list);
 }
 
 // 验证密码
 app.post('/api/auth/verify', (req, res) => {
-  const { password } = req.body;
-  if (password === getServerPassword()) {
-    res.json({ success: true });
+  const ip = clientIp(req);
+  const rl = checkLoginRateLimit(ip);
+  if (!rl.allowed) {
+    res.status(429).json({ success: false, error: `尝试过于频繁，请 ${rl.waitSec} 秒后再试` });
+    return;
+  }
+  const { password } = req.body || {};
+  if (password !== undefined && verifyServerPassword(password)) {
+    loginAttempts.delete(ip);
+    res.json({ success: true, token: issueApiToken() });
   } else {
+    recordFailedLogin(ip);
     res.json({ success: false });
   }
 });
 
 // 修改密码
 app.post('/api/auth/change-password', (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-  if (currentPassword !== getServerPassword()) {
+  const ip = clientIp(req);
+  const rl = checkLoginRateLimit(ip);
+  if (!rl.allowed) {
+    res.status(429).json({ success: false, error: `尝试过于频繁，请 ${rl.waitSec} 秒后再试` });
+    return;
+  }
+  const { currentPassword, newPassword } = req.body || {};
+  if (!verifyServerPassword(currentPassword)) {
+    recordFailedLogin(ip);
     res.json({ success: false, error: '当前密码错误' });
     return;
   }
@@ -112,6 +222,7 @@ app.post('/api/auth/change-password', (req, res) => {
     return;
   }
   setServerPassword(newPassword);
+  loginAttempts.delete(ip);
   res.json({ success: true });
 });
 
@@ -387,101 +498,53 @@ app.post('/api/nutstore/write', async (req, res) => {
   }
 });
 
-// 获取 files.md 条目
+// 获取 files.md 条目（v2.2 重构：根目录/journal/brain 三段统一处理，文件读取并发化）
+const EXCLUDED_ROOT_FILES = ['help.md', 'readme.md', 'about.md'];
+
+async function listMdFilesInDir(username, password, encodedDirPath) {
+  const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedDirPath}`, {
+    username, password, method: 'PROPFIND', headers: { 'Depth': '1' },
+  });
+  if (!response.ok) return []; // 目录不存在等情形按空处理，与原行为一致
+  const responses = await parseWebDAVResponse(await response.text());
+  const files = [];
+  for (const { href } of responses) {
+    const fileName = decodeURIComponent(href.split('/').filter(Boolean).pop() || '');
+    if (fileName && fileName.endsWith('.md')) files.push(fileName);
+  }
+  return files;
+}
+
+// 并发读取目录下文件内容（并发上限 4，避免触发坚果云限流；单文件失败跳过）
+async function fetchMdContentsConcurrent(username, password, encodedDirPath, fileNames, limit = 4) {
+  const results = [];
+  let idx = 0;
+  async function worker() {
+    while (idx < fileNames.length) {
+      const fileName = fileNames[idx++];
+      try {
+        const r = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedDirPath}/${encodeURIComponent(fileName)}`, {
+          username, password, method: 'GET',
+        });
+        if (r.ok) results.push({ fileName, content: await r.text() });
+      } catch { /* 单文件读取失败跳过，与原行为一致 */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, fileNames.length) }, worker));
+  return results;
+}
+
 app.post('/api/nutstore/filesmd', async (req, res) => {
   try {
     const { username, password, basePath = '/笔记' } = req.body;
-    
     const allEntries = [];
-    
-    const encodedPath = encodePath(basePath);
-    const rootResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedPath}`, {
-      username,
-      password,
-      method: 'PROPFIND',
-      headers: { 'Depth': '1' },
-    });
-
-    if (rootResponse.ok) {
-      const text = await rootResponse.text();
-      const responses = await parseWebDAVResponse(text);
-      
-      const excludedFiles = ['help.md', 'readme.md', 'about.md'];
-      
-      for (const { href } of responses) {
-        const fileName = decodeURIComponent(href.split('/').filter(Boolean).pop() || '');
-        if (fileName && fileName.endsWith('.md') && !excludedFiles.includes(fileName.toLowerCase())) {
-          const fileResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedPath}/${encodeURIComponent(fileName)}`, {
-            username,
-            password,
-            method: 'GET',
-          });
-          if (fileResponse.ok) {
-            const content = await fileResponse.text();
-            allEntries.push({ fileName, content });
-          }
-        }
-      }
+    for (const sub of ['', '/journal', '/brain']) {
+      const encoded = encodePath(`${basePath}${sub}`);
+      let files = await listMdFilesInDir(username, password, encoded);
+      if (!sub) files = files.filter(f => !EXCLUDED_ROOT_FILES.includes(f.toLowerCase()));
+      const entries = await fetchMdContentsConcurrent(username, password, encoded, files);
+      allEntries.push(...entries);
     }
-
-    const journalPath = `${basePath}/journal`;
-    const journalEncoded = encodePath(journalPath);
-    const journalResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${journalEncoded}`, {
-      username,
-      password,
-      method: 'PROPFIND',
-      headers: { 'Depth': '1' },
-    });
-
-    if (journalResponse.ok) {
-      const text = await journalResponse.text();
-      const responses = await parseWebDAVResponse(text);
-      
-      for (const { href } of responses) {
-        const fileName = decodeURIComponent(href.split('/').filter(Boolean).pop() || '');
-        if (fileName && fileName.endsWith('.md')) {
-          const fileResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${journalEncoded}/${encodeURIComponent(fileName)}`, {
-            username,
-            password,
-            method: 'GET',
-          });
-          if (fileResponse.ok) {
-            const content = await fileResponse.text();
-            allEntries.push({ fileName, content });
-          }
-        }
-      }
-    }
-
-    const brainPath = `${basePath}/brain`;
-    const brainEncoded = encodePath(brainPath);
-    const brainResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${brainEncoded}`, {
-      username,
-      password,
-      method: 'PROPFIND',
-      headers: { 'Depth': '1' },
-    });
-
-    if (brainResponse.ok) {
-      const text = await brainResponse.text();
-      const responses = await parseWebDAVResponse(text);
-      
-      for (const { href } of responses) {
-        const fileName = decodeURIComponent(href.split('/').filter(Boolean).pop() || '');
-        if (fileName && fileName.endsWith('.md')) {
-          const fileResponse = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${brainEncoded}/${encodeURIComponent(fileName)}`, {
-            username,
-            password,
-            method: 'GET',
-          });
-          if (fileResponse.ok) {
-            const content = await fileResponse.text();
-            allEntries.push({ fileName, content });
-          }
-        }
-      }
-    }
-
     res.json({ entries: allEntries });
   } catch (error) {
     console.error('读取 files.md 失败:', error);
@@ -557,11 +620,10 @@ function filterAIResponse(response) {
   }
   
   // 检测 AI 是否试图泄露系统提示词
+  // v2.2 修复：仅匹配本系统提示词的完整特征串，不再使用 "你是.*助手" 等宽泛模式（会误伤正常回复）
   const systemPromptLeakPatterns = [
-    /系统提示|system.?prompt/gi,
-    /你是.*?助手/i,
-    /你是一个.*?AI/i,
-    /以下是.*?系统.*?提示/i,
+    /你是心光系统的个人时间管理AI助手/,
+    /以下是用户的历史数据供分析参考/,
   ];
   
   for (const pattern of systemPromptLeakPatterns) {

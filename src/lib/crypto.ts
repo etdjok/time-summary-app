@@ -11,6 +11,7 @@
 // 在非安全上下文（HTTP 非 localhost）中原生 crypto.subtle 不可用，
 // 通过 webCrypto 兼容层自动降级为纯 JS 实现，保证局域网部署可用
 import { webCrypto as crypto } from './webcrypto';
+import { apiFetch } from './auth';
 
 // ========== 常量 ==========
 
@@ -34,6 +35,10 @@ const MK_RECOVERY_KEY = 'xinguang_mk_recovery';
 const RECOVERY_HASH_KEY = 'xinguang_recovery_hash';
 const LOGIN_SALT_KEY = 'xinguang_login_salt';
 const LOGIN_HASH_KEY = 'xinguang_login_hash';
+
+// 云端恢复备份文件名与本地标记（提前声明供快照回滚使用）
+export const RECOVERY_BACKUP_FILENAME = '.xinguang_recovery.json';
+export const RECOVERY_BACKUP_KEY = 'xinguang_recovery_cloud';
 
 // ========== 会话主密钥（仅存内存） ==========
 
@@ -394,7 +399,7 @@ export async function migrateOldToNewFormat(
     if (!creds.username || !creds.password) return { success: false, error: '凭据格式错误' };
   }
 
-  const listRes = await fetch(`${API_BASE_URL}/list`, {
+  const listRes = await apiFetch(`${API_BASE_URL}/list`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: creds.username, password: creds.password, dirPath: basePath }),
   });
@@ -406,7 +411,7 @@ export async function migrateOldToNewFormat(
     const filePath = `${basePath}/${files[i]}`;
     onProgress?.(i + 1, files.length);
     try {
-      const readRes = await fetch(`${API_BASE_URL}/read`, {
+      const readRes = await apiFetch(`${API_BASE_URL}/read`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
       });
@@ -415,7 +420,7 @@ export async function migrateOldToNewFormat(
       if (!isOldFormatEncrypted(rawContent)) continue;
       const decrypted = await decryptContentOld(rawContent, oldPassword);
       const reEncrypted = await encryptContent(decrypted, mk);
-      const writeRes = await fetch(`${API_BASE_URL}/write`, {
+      const writeRes = await apiFetch(`${API_BASE_URL}/write`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: reEncrypted }),
       });
@@ -427,9 +432,30 @@ export async function migrateOldToNewFormat(
 
 // ========== 完整加密设置流程 ==========
 
+const ALL_ENC_STORAGE_KEYS = [
+  ENC_SETTINGS_KEY, MK_PW_KEY, MK_RECOVERY_KEY, RECOVERY_HASH_KEY,
+  LOGIN_SALT_KEY, LOGIN_HASH_KEY, RECOVERY_BACKUP_KEY,
+] as const;
+
+function snapshotEncStorage(): Record<string, string | null> {
+  const snap: Record<string, string | null> = {};
+  for (const k of ALL_ENC_STORAGE_KEYS) snap[k] = localStorage.getItem(k);
+  return snap;
+}
+
+function restoreEncStorage(snap: Record<string, string | null>): void {
+  for (const [k, v] of Object.entries(snap)) {
+    if (v === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, v);
+  }
+}
+
 export async function setupEncryption(
   password: string, onProgress?: (msg: string) => void,
 ): Promise<{ success: boolean; recoveryCode?: string; error?: string }> {
+  // v2.2 失败回滚：快照进入前状态，中途失败时恢复，避免留下半成品加密配置
+  const snapshot = snapshotEncStorage();
+  const prevMK = getSessionMK();
   try {
     onProgress?.('生成主密钥...');
     const mk = generateMasterKey();
@@ -445,7 +471,11 @@ export async function setupEncryption(
     saveEncryptSettings({ enabled: true });
     setSessionMK(mk);
     return { success: true, recoveryCode };
-  } catch (e: any) { return { success: false, error: e.message || '设置失败' }; }
+  } catch (e: any) {
+    restoreEncStorage(snapshot);
+    if (prevMK) setSessionMK(prevMK); else clearSessionMK();
+    return { success: false, error: e.message || '设置失败' };
+  }
 }
 
 // ========== 登录流程 ==========
@@ -498,10 +528,6 @@ export async function changeEncryptionPassword(
 
 // ========== 忘记密码：恢复码重置（支持从云端拉取恢复备份） ==========
 
-export const RECOVERY_BACKUP_FILENAME = '.xinguang_recovery.json';
-
-export const RECOVERY_BACKUP_KEY = 'xinguang_recovery_cloud';
-
 export async function resetPasswordWithRecovery(
   recoveryCode: string, newPassword: string,
   getCloudBackup?: () => Promise<{ salt: string; ciphertext: string } | null>,
@@ -552,4 +578,136 @@ export async function migrateFromV19(
     }
     return { success: true, recoveryCode };
   } catch (e: any) { return { success: false, error: e.message || '迁移失败' }; }
+}
+
+// ========== v2.2：开启加密时迁移云端已有明文文件 ==========
+
+export interface MigrationStats {
+  total: number;
+  migrated: number;
+  alreadyEncrypted: number;
+  oldFormat: number;
+  failed: { file: string; error: string }[];
+}
+
+const MIGRATE_SUBDIRS = ['', 'journal', 'brain'];
+
+async function getNutstoreCredsForMigration(): Promise<{ username: string; password: string } | { error: string }> {
+  const raw = localStorage.getItem('nutstore_credentials');
+  if (!raw) return { error: '未配置坚果云账号' };
+  if (isEncryptedCredentials(raw)) {
+    const dec = await decryptCredentials(raw);
+    if (!dec) return { error: '凭据解密失败，请先解锁加密会话' };
+    return dec;
+  }
+  try {
+    const creds = JSON.parse(raw);
+    if (creds.username && creds.password) return creds;
+    return { error: '凭据格式错误' };
+  } catch { return { error: '凭据格式错误' }; }
+}
+
+export async function encryptExistingFiles(
+  basePath: string,
+  onProgress?: (current: number, total: number, file: string) => void,
+): Promise<{ success: boolean; stats?: MigrationStats; error?: string }> {
+  const mk = getSessionMK();
+  if (!mk) return { success: false, error: '加密会话未解锁，无法迁移' };
+  const creds = await getNutstoreCredsForMigration();
+  if ('error' in creds) return { success: false, error: creds.error };
+
+  // 1. 收集根目录与子目录的全部 .md 文件
+  const filePaths: string[] = [];
+  for (const sub of MIGRATE_SUBDIRS) {
+    const dirPath = sub ? `${basePath.replace(/\/+$/, '')}/${sub}` : basePath;
+    try {
+      const listRes = await apiFetch(`${API_BASE_URL}/list`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: creds.username, password: creds.password, dirPath }),
+      });
+      if (!listRes.ok) continue;
+      const files: string[] = (await listRes.json()).files || [];
+      for (const f of files) filePaths.push(sub ? `${dirPath}/${f}` : `${basePath.replace(/\/+$/, '')}/${f}`);
+    } catch { /* 目录不存在（如 journal/brain）属正常，跳过 */ }
+  }
+
+  // 2. 逐个读取：明文 → 加密回写；密文/旧格式跳过并计数
+  const stats: MigrationStats = { total: filePaths.length, migrated: 0, alreadyEncrypted: 0, oldFormat: 0, failed: [] };
+  for (let i = 0; i < filePaths.length; i++) {
+    const filePath = filePaths[i];
+    onProgress?.(i + 1, stats.total, filePath);
+    try {
+      const readRes = await apiFetch(`${API_BASE_URL}/read`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
+      });
+      if (!readRes.ok) { stats.failed.push({ file: filePath, error: `读取失败(${readRes.status})` }); continue; }
+      const rawContent = (await readRes.json()).content || '';
+      if (isNewFormatEncrypted(rawContent)) { stats.alreadyEncrypted++; continue; }
+      if (isOldFormatEncrypted(rawContent)) { stats.oldFormat++; continue; }
+      if (!rawContent.trim()) continue; // 空文件无需加密
+      const encrypted = await encryptContent(rawContent, mk);
+      const writeRes = await apiFetch(`${API_BASE_URL}/write`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: encrypted }),
+      });
+      if (writeRes.ok) stats.migrated++;
+      else stats.failed.push({ file: filePath, error: `写入失败(${writeRes.status})` });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      stats.failed.push({ file: filePath, error: msg || '未知错误' });
+    }
+  }
+  return { success: true, stats };
+}
+
+// ========== v2.2：云端恢复备份双通道（恢复码 + 密码） ==========
+
+export interface CloudBackupPayload {
+  v: 2;
+  recovery: { salt: string; ciphertext: string };
+  pw: { salt: string; ciphertext: string };
+}
+
+export function buildCloudBackupPayload(): CloudBackupPayload | null {
+  const recovery = getWrappedMKRecovery();
+  const pw = getWrappedMK();
+  if (!recovery || !pw) return null;
+  return { v: 2, recovery, pw };
+}
+
+export function parseCloudBackup(raw: string): { recovery: { salt: string; ciphertext: string } | null; pw: { salt: string; ciphertext: string } | null } | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.salt === 'string' && typeof parsed.ciphertext === 'string') {
+      return { recovery: { salt: parsed.salt, ciphertext: parsed.ciphertext }, pw: null }; // 旧格式：仅恢复码通道
+    }
+    if (parsed && parsed.v === 2 && parsed.recovery && parsed.pw
+      && typeof parsed.recovery.salt === 'string' && typeof parsed.pw.salt === 'string') {
+      return { recovery: parsed.recovery, pw: parsed.pw };
+    }
+    return null;
+  } catch { return null; }
+}
+
+// 清缓存/换设备后：用密码直接从云端备份恢复（旧格式备份无密码通道，需提示改用恢复码）
+export async function unlockWithCloudBackup(
+  password: string,
+  fetchBackupRaw: () => Promise<string | null>,
+): Promise<{ success: boolean; error?: string }> {
+  const raw = await fetchBackupRaw();
+  if (!raw) return { success: false, error: '云端未找到恢复备份' };
+  const parsed = parseCloudBackup(raw);
+  if (!parsed) return { success: false, error: '云端恢复备份格式无效' };
+  if (!parsed.pw) return { success: false, error: '云端备份为旧格式（无密码通道），请使用恢复码重置' };
+  const mk = await unwrapMasterKey(parsed.pw, password);
+  if (!mk) return { success: false, error: '密码错误' };
+  saveWrappedMK(parsed.pw);
+  if (parsed.recovery) saveWrappedMKRecovery(parsed.recovery);
+  saveLoginSalt();
+  await computeAndSaveLoginHash(password);
+  saveEncryptSettings({ enabled: true, recoveryShown: true });
+  localStorage.setItem(RECOVERY_BACKUP_KEY, '1');
+  setSessionMK(mk);
+  return { success: true };
 }

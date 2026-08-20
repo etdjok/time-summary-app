@@ -1,5 +1,7 @@
 ﻿// 流式响应客户端 - 处理 SSE (Server-Sent Events) 协议
 
+import { apiFetch } from './auth';
+
 export interface StreamCallbacks {
   onStart?: () => void;
   onChunk: (content: string) => void;
@@ -52,7 +54,7 @@ export async function sendStreamRequest(
     try {
       callbacks.onStart?.();
       
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

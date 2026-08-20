@@ -38,17 +38,26 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setIsLoading(true);
     setError('');
 
-    verifyPassword(password).then((valid) => {
-      if (valid) {
-        localStorage.setItem(AUTH_KEY, 'true');
-        localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-        onLogin();
-      } else {
-        setError('密码错误，请重试');
-        setPassword('');
-      }
-      setIsLoading(false);
-    });
+    // v2.2 修复：网络错误与密码错误分开提示；catch+finally 兜底，
+    // 避免异常时按钮永久禁用（iOS 隐私模式下 localStorage 可能抛异常）
+    verifyPassword(password)
+      .then((result) => {
+        if (result.success) {
+          try {
+            localStorage.setItem(AUTH_KEY, 'true');
+            localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
+          } catch {
+            // iOS 隐私模式等场景 localStorage 不可用：会话状态无法持久化，
+            // 但本次登录仍可继续（刷新后需重新输入密码）
+          }
+          onLogin();
+        } else {
+          setError(result.message || '密码错误，请重试');
+          if (result.error === 'auth') setPassword('');
+        }
+      })
+      .catch(() => setError('登录过程出现异常，请重试'))
+      .finally(() => setIsLoading(false));
   };
 
   return (

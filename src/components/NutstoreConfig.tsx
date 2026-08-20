@@ -5,6 +5,7 @@ import {
   getEncryptSettings, saveEncryptSettings, clearEncryptSettings,
   setupEncryption, normalizeRecoveryCode,
   hasSessionMK, hasLocalEncryptionKeys, markRecoveryShown, loginWithPassword, logout,
+  encryptExistingFiles, unlockWithCloudBackup, type MigrationStats,
 } from '../lib/crypto';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 
@@ -91,6 +92,16 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
   const [cloudBackupExists, setCloudBackupExists] = useState(false);
   const [checkedCloudOnEnable, setCheckedCloudOnEnable] = useState(false);
 
+  // v2.2 三态加密显示：本地无密钥但云端有备份 → 云端已加密·本浏览器未解锁
+  const [cloudLocked, setCloudLocked] = useState(false);
+  const [forceReset, setForceReset] = useState(false); // 用户已明确确认放弃云端旧数据
+  const [cloudUnlockBusy, setCloudUnlockBusy] = useState(false);
+  const [confirmForceReset, setConfirmForceReset] = useState(false);
+
+  // v2.2 历史明文文件迁移加密
+  const [migrating, setMigrating] = useState(false);
+  const [migrationStats, setMigrationStats] = useState<MigrationStats | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -101,6 +112,8 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
         else setCloudBackupError(r.error === '文件不存在' ? '' : (r.error || ''));
       } else if (r.success && r.wrapped) {
         setCloudBackupExists(true);
+        // 本地无密钥但云端有备份：进入"云端已加密·未解锁"态，防止误覆盖
+        if (!hasLocalEncryptionKeys()) { setCloudLocked(true); setEncEnabled(true); }
       }
     })();
     return () => { cancelled = true; };
@@ -172,6 +185,23 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
       setCloudBackupError(r.error || '云端备份失败');
       setResult({ success: false, message: `加密已启用，但恢复密钥云端备份失败：${r.error || '未知错误'}` });
     }
+    // v2.2 迁移加密：将云端已有明文笔记全部加密，确保历史数据同样受保护
+    setMigrating(true);
+    const mr = await encryptExistingFiles(b64 || '/我的坚果云/笔记', (cur, total) => {
+      setResult({ success: true, message: `正在加密云端历史文件 ${cur}/${total}...` });
+    });
+    setMigrating(false);
+    if (mr.success && mr.stats) {
+      setMigrationStats(mr.stats);
+      const s = mr.stats;
+      const parts = [`新加密 ${s.migrated} 个`];
+      if (s.alreadyEncrypted > 0) parts.push(`已加密 ${s.alreadyEncrypted} 个`);
+      if (s.oldFormat > 0) parts.push(`旧格式 ${s.oldFormat} 个（登录时自动迁移）`);
+      if (s.failed.length > 0) parts.push(`失败 ${s.failed.length} 个`);
+      setResult({ success: s.failed.length === 0, message: `云端历史文件加密完成：${parts.join('，')}` });
+    } else if (!mr.success) {
+      setResult({ success: false, message: `历史文件迁移加密失败：${mr.error || '未知错误'}（新保存的内容仍会加密）` });
+    }
     // 继续完成坚果云连接并读取数据
     setTesting(true);
     const testResult = await testConnectionWithDetails(b64);
@@ -207,6 +237,38 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     }
   };
 
+  // v2.2 云端已加密·本浏览器未解锁：用密码直接从云端备份恢复
+  const handleCloudUnlock = async () => {
+    if (!encPassword) { setResult({ success: false, message: '请输入加密密码' }); return; }
+    setCloudUnlockBusy(true);
+    setResult({ success: true, message: '正在从云端备份解锁...' });
+    const r = await unlockWithCloudBackup(encPassword, async () => {
+      const cr = await fetchRecoveryBackupFromCloud(basePath);
+      return cr.success ? (cr.raw || null) : null;
+    });
+    setCloudUnlockBusy(false);
+    if (r.success) {
+      setEncPassword('');
+      setEncConfirm('');
+      setCloudLocked(false);
+      setEncActive(true);
+      setResult({ success: true, message: '已从云端备份恢复加密配置并解锁，可以正常读写加密数据' });
+    } else {
+      setResult({ success: false, message: r.error || '解锁失败' });
+    }
+  };
+
+  // v2.2 强制放弃云端旧加密数据（需二次确认），进入全新设置流程
+  const handleForceReset = () => {
+    if (!confirmForceReset) { setConfirmForceReset(true); return; }
+    setForceReset(true);
+    setCloudLocked(false);
+    setConfirmForceReset(false);
+    setEncPassword('');
+    setEncConfirm('');
+    setResult({ success: false, message: '已选择放弃云端旧加密数据。请设置新的加密密码，保存后将生成全新密钥并覆盖云端备份。' });
+  };
+
   const handleSaveAndTest = async () => {
     if (!username || !password) { setResult({ success: false, message: '请输入账号和应用密码' }); return; }
     setTesting(true);
@@ -235,10 +297,12 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
         if (!checkedCloudOnEnable) {
           const cr = await fetchRecoveryBackupFromCloud(basePath);
           setCheckedCloudOnEnable(true);
-          if (cr.success && cr.wrapped) {
+          if (cr.success && cr.wrapped && !forceReset) {
+            // v2.2 防误覆盖：检测到云端备份时禁止直接生成新密钥，强制走解锁/恢复流程
             setCloudBackupExists(true);
+            setCloudLocked(true);
             setTesting(false);
-            setResult({ success: false, message: '检测到云端该目录已有加密数据。再次点击保存将生成全新密钥并永久覆盖，已加密的旧数据将无法读取。若忘记原密码请先使用"忘记密码"恢复。' });
+            setResult({ success: false, message: '检测到云端已有加密配置备份。为防止旧数据无法读取，请先用密码或恢复码解锁；若确认放弃旧数据，可选择强制重新设置。' });
             return;
           }
         }
@@ -267,6 +331,11 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
       setEncActive(false);
       setCloudBackupOk(false);
       setCloudBackupError('');
+      setCloudLocked(false);
+      setForceReset(false);
+      setConfirmForceReset(false);
+      setCheckedCloudOnEnable(false);
+      setMigrationStats(null);
     }
 
     await saveCredentialsSmart(username, password);
@@ -305,6 +374,10 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
     setCloudBackupError('');
     setCloudBackupExists(false);
     setCheckedCloudOnEnable(false);
+    setCloudLocked(false);
+    setForceReset(false);
+    setConfirmForceReset(false);
+    setMigrationStats(null);
     clearCredentials();
     setIsConnected(false);
     setResult({ success: false, message: '已断开连接' });
@@ -416,6 +489,16 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
                         ? '当前会话已解锁，数据读写自动加解密。'
                         : '当前会话未解锁，重建数据或刷新页面后需输入加密密码。'}
                     </p>
+                    {migrating && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700">正在加密云端历史文件，请勿关闭此窗口...</div>
+                    )}
+                    {migrationStats && !migrating && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-700">
+                        历史文件加密统计：新加密 {migrationStats.migrated} 个、已加密 {migrationStats.alreadyEncrypted} 个
+                        {migrationStats.oldFormat > 0 && `、旧格式 ${migrationStats.oldFormat} 个（登录时自动迁移）`}
+                        {migrationStats.failed.length > 0 && `、失败 ${migrationStats.failed.length} 个：${migrationStats.failed.map(f => f.file.split('/').pop()).join('、')}`}
+                      </div>
+                    )}
                     {!hasSessionMK() && (
                       <div className="space-y-2">
                         <input type="password" value={encPassword} onChange={(e) => setEncPassword(e.target.value)} placeholder="输入加密密码解锁会话"
@@ -445,6 +528,32 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
                       修改加密密码
                     </button>
                   </div>
+                ) : cloudLocked && !forceReset ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <p className="text-sm font-medium text-blue-800">云端已加密 · 本浏览器未解锁</p>
+                    </div>
+                    <p className="text-xs text-blue-700 leading-relaxed">
+                      检测到云端该目录已有加密配置备份（本浏览器未保存密钥，常见于清除浏览器数据、换设备或无痕窗口）。输入原加密密码即可恢复，不会覆盖任何数据。
+                    </p>
+                    <input type="password" value={encPassword} onChange={(e) => setEncPassword(e.target.value)} placeholder="输入原加密密码解锁"
+                      className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl focus:outline-none focus:border-blue-400 transition-colors text-sm" />
+                    <button type="button" onClick={handleCloudUnlock} disabled={cloudUnlockBusy || !encPassword}
+                      className="w-full py-2 px-3 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      {cloudUnlockBusy ? '正在解锁...' : '用密码解锁'}
+                    </button>
+                    <button type="button" onClick={() => setShowForgotModal(true)}
+                      className="w-full py-2 px-3 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors">
+                      忘记密码？使用恢复码重置
+                    </button>
+                    <div className="border-t border-blue-100 pt-2">
+                      <button type="button" onClick={handleForceReset}
+                        className="w-full py-2 px-3 text-red-600 text-xs font-medium rounded-xl hover:bg-red-50 transition-colors">
+                        {confirmForceReset ? '⚠ 再次点击确认：永久放弃云端旧加密数据（不可恢复）' : '放弃云端旧加密数据，强制重新设置'}
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     <div>
@@ -462,13 +571,14 @@ export function NutstoreConfig({ onClose }: NutstoreConfigProps) {
                       <ul className="text-[11px] text-amber-600 leading-relaxed space-y-0.5 list-disc list-inside">
                         <li>密码<strong>不存储</strong>在浏览器中，每次会话需重新输入</li>
                         <li>设置时会生成<strong>恢复码</strong>，务必安全保存</li>
-                        <li>忘记密码可用恢复码重置，否则数据<strong>永久丢失</strong></li>
+                        <li>忘记密码可用恢复码或云端备份（密码通道）重置</li>
+                        <li>开启后将<strong>自动加密云端已有的明文笔记</strong></li>
                         <li>坚果云无法搜索加密文件内容</li>
                       </ul>
                     </div>
                     {cloudBackupExists && (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-2.5">
-                        <p className="text-[11px] text-red-600 leading-relaxed">⚠️ 检测到云端该目录已有加密数据与恢复密钥备份。若此处重新设置加密，将生成全新密钥，<strong>云端已加密的数据将无法读取</strong>。如需恢复旧数据，请先点击下方"忘记密码？使用恢复码重置"。</p>
+                        <p className="text-[11px] text-red-600 leading-relaxed">⚠️ 检测到云端存在恢复密钥备份文件（.xinguang_recovery.json）。保存后将生成全新密钥并<strong>覆盖该备份</strong>；若之前有真实加密过的笔记且未迁移，将无法读取。如需找回旧数据，请先点击下方"忘记密码？使用恢复码重置"。</p>
                       </div>
                     )}
                     {cloudBackupExists && (

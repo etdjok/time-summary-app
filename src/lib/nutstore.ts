@@ -1,6 +1,7 @@
 import { MarkdownEntry } from '../types';
 import { parseMarkdownFile } from './filesmdParser';
-import { maybeEncrypt, maybeDecrypt, encryptCredentials, decryptCredentials, isEncryptedCredentials, getWrappedMKRecovery, RECOVERY_BACKUP_FILENAME, RECOVERY_BACKUP_KEY, hasSessionMK } from './crypto';
+import { apiFetch } from './auth';
+import { maybeEncrypt, maybeDecrypt, encryptCredentials, decryptCredentials, isEncryptedCredentials, getWrappedMKRecovery, RECOVERY_BACKUP_FILENAME, RECOVERY_BACKUP_KEY, hasSessionMK, buildCloudBackupPayload, parseCloudBackup } from './crypto';
 
 const STORAGE_KEY = 'nutstore_credentials';
 const LOCAL_CACHE_KEY = 'filesmd_cache';
@@ -109,7 +110,7 @@ export async function testConnectionWithDetails(basePath: string): Promise<{
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/test`, {
+    const response = await apiFetch(`${API_BASE_URL}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, basePath }),
@@ -132,7 +133,7 @@ export async function listRootFolders(): Promise<{
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/list`, {
+    const response = await apiFetch(`${API_BASE_URL}/list`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, dirPath: '/' }),
@@ -178,7 +179,7 @@ export async function testConnection(username: string, password: string, basePat
   basePathFolders?: string[];
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/test`, {
+    const response = await apiFetch(`${API_BASE_URL}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, basePath }),
@@ -201,7 +202,7 @@ export async function listFilesmdFiles(basePath: string): Promise<{
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/list`, {
+    const response = await apiFetch(`${API_BASE_URL}/list`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, dirPath: basePath }),
@@ -224,7 +225,7 @@ export async function readFile(path: string): Promise<{
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/read`, {
+    const response = await apiFetch(`${API_BASE_URL}/read`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath: path }),
@@ -252,7 +253,7 @@ export async function writeFile(path: string, content: string): Promise<{
 
   try {
     const encryptedContent = await maybeEncrypt(content);
-    const response = await fetch(`${API_BASE_URL}/write`, {
+    const response = await apiFetch(`${API_BASE_URL}/write`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath: path, content: encryptedContent }),
@@ -271,7 +272,7 @@ export async function loadEntries(basePath: string): Promise<MarkdownEntry[]> {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/filesmd`, {
+    const response = await apiFetch(`${API_BASE_URL}/filesmd`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, basePath }),
@@ -320,7 +321,7 @@ export async function deleteFile(path: string): Promise<{
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/delete`, {
+    const response = await apiFetch(`${API_BASE_URL}/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath: path }),
@@ -359,7 +360,7 @@ export async function appendToFile(basePath: string, content: string, type: stri
       filePath = `${basePath}/${type}.md`;
     }
 
-    const readResponse = await fetch(`${API_BASE_URL}/read`, {
+    const readResponse = await apiFetch(`${API_BASE_URL}/read`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),
@@ -395,7 +396,7 @@ export async function appendToFile(basePath: string, content: string, type: stri
     const newContent = existingContent.trimEnd() + '\n' + contentToAdd;
     const encryptedNewContent = await maybeEncrypt(newContent);
 
-    const writeResponse = await fetch(`${API_BASE_URL}/write`, {
+    const writeResponse = await apiFetch(`${API_BASE_URL}/write`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath, content: encryptedNewContent }),
@@ -423,7 +424,7 @@ export async function readFileRaw(path: string): Promise<{
   const creds = await getCredentialsAsync();
   if (!creds) return { success: false, error: '未配置坚果云账号' };
   try {
-    const response = await fetch(`${API_BASE_URL}/read`, {
+    const response = await apiFetch(`${API_BASE_URL}/read`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath: path }),
@@ -445,7 +446,7 @@ export async function writeFileRaw(path: string, content: string): Promise<{
   const creds = await getCredentialsAsync();
   if (!creds) return { success: false, error: '未配置坚果云账号' };
   try {
-    const response = await fetch(`${API_BASE_URL}/write`, {
+    const response = await apiFetch(`${API_BASE_URL}/write`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath: path, content }),
@@ -464,11 +465,14 @@ export async function backupRecoveryToCloud(basePath: string): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const wrapped = getWrappedMKRecovery();
-  if (!wrapped) return { success: false, error: '本地未找到恢复密钥' };
+  const recovery = getWrappedMKRecovery();
+  if (!recovery) return { success: false, error: '本地未找到恢复密钥' };
   const dir = basePath || '/我的坚果云/笔记';
   const filePath = `${dir.replace(/\/+$/, '')}/${RECOVERY_BACKUP_FILENAME}`;
-  const r = await writeFileRaw(filePath, JSON.stringify(wrapped));
+  // v2.2 双通道备份：恢复码通道 + 密码通道（清缓存后凭密码即可找回，无需恢复码）
+  const payload = buildCloudBackupPayload();
+  const content = payload ? JSON.stringify(payload) : JSON.stringify(recovery);
+  const r = await writeFileRaw(filePath, content);
   if (r.success) localStorage.setItem(RECOVERY_BACKUP_KEY, '1');
   return r;
 }
@@ -476,19 +480,15 @@ export async function backupRecoveryToCloud(basePath: string): Promise<{
 export async function fetchRecoveryBackupFromCloud(basePath: string): Promise<{
   success: boolean;
   wrapped?: { salt: string; ciphertext: string };
+  backup?: { recovery: { salt: string; ciphertext: string } | null; pw: { salt: string; ciphertext: string } | null };
+  raw?: string;
   error?: string;
 }> {
   const dir = basePath || '/我的坚果云/笔记';
   const filePath = `${dir.replace(/\/+$/, '')}/${RECOVERY_BACKUP_FILENAME}`;
   const r = await readFileRaw(filePath);
   if (!r.success) return { success: false, error: r.error };
-  try {
-    const parsed = JSON.parse(r.content || '');
-    if (parsed && typeof parsed.salt === 'string' && typeof parsed.ciphertext === 'string') {
-      return { success: true, wrapped: { salt: parsed.salt, ciphertext: parsed.ciphertext } };
-    }
-    return { success: false, error: '云端恢复备份格式无效' };
-  } catch {
-    return { success: false, error: '云端恢复备份格式无效' };
-  }
+  const parsed = parseCloudBackup(r.content || '');
+  if (!parsed) return { success: false, error: '云端恢复备份格式无效' };
+  return { success: true, wrapped: parsed.recovery || undefined, backup: parsed, raw: r.content };
 }

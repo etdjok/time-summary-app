@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getCredentialsAsync } from '../lib/nutstore';
 import { maybeEncrypt, maybeDecrypt } from '../lib/crypto';
+import { apiFetch } from '../lib/auth';
 
 const CATEGORIES_KEY = 'heartlight_categories';
 
@@ -24,7 +25,7 @@ async function syncCategoriesToNutstore(categories: Category[]): Promise<void> {
     if (!creds) return;
     const basePath = (localStorage.getItem('nutstore_base_path') || '').trim() || '/我的坚果云/笔记';
     const filePath = `${basePath}/${REMOTE_CATEGORIES_FILE}`;
-    const response = await fetch('/api/nutstore/write', {
+    const response = await apiFetch('/api/nutstore/write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -50,7 +51,7 @@ export async function loadCategoriesFromNutstore(): Promise<Category[] | null> {
     if (!creds) return null;
     const basePath = (localStorage.getItem('nutstore_base_path') || '').trim() || '/我的坚果云/笔记';
     const filePath = `${basePath}/${REMOTE_CATEGORIES_FILE}`;
-    const response = await fetch('/api/nutstore/read', {
+    const response = await apiFetch('/api/nutstore/read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: creds.username, password: creds.password, filePath }),

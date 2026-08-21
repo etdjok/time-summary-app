@@ -43,6 +43,7 @@ export function QuickRecord() {
   const [content, setContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedPriority, setSelectedPriority] = useState<string | null>(null);
   const [showQuadrants, setShowQuadrants] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -142,10 +143,11 @@ export function QuickRecord() {
     if (!content.trim() || !activeCategory) return;
 
     setIsSaving(true);
+    setSaveError(null);
 
     try {
       let targetCategory = activeCategory;
-      
+
       // 如果用户没有手动选择分类，尝试AI自动分类
       if (!selectedCategory) {
         const aiResult = await aiClassifyContent(content.trim(), categories, selectedCategory);
@@ -167,9 +169,13 @@ export function QuickRecord() {
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 2000);
         loadEntries();
+      } else {
+        // 保存失败必须显式反馈，否则表现为"点击发送无反应"（内容保留以便重试）
+        setSaveError('保存失败：未能写入坚果云。常见原因：坚果云账号/应用密码已失效、加密会话未解锁、或网络中断。内容已保留，可重试。');
+        console.error('[心光] addEntry 写入失败，详情见控制台网络请求 /api/nutstore/write');
       }
-    } catch {
-      // handle error in addEntry
+    } catch (e) {
+      setSaveError(`保存失败：${e instanceof Error ? e.message : '未知错误'}`);
     } finally {
       setIsSaving(false);
     }
@@ -338,6 +344,13 @@ export function QuickRecord() {
         <div className="mt-3 flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-2 rounded-lg">
           <CheckCircle className="w-4 h-4" />
           记录已保存到坚果云
+        </div>
+      )}
+
+      {saveError && (
+        <div className="mt-3 flex items-start gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{saveError}</span>
         </div>
       )}
     </div>

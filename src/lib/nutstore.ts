@@ -336,6 +336,7 @@ export async function deleteFile(path: string): Promise<{
 export async function appendToFile(basePath: string, content: string, type: string): Promise<boolean> {
   const creds = await getCredentialsAsync();
   if (!creds) {
+    console.error('[心光] 写入失败：坚果云凭据缺失或解密失败（localStorage 中凭据不可用）');
     return false;
   }
 
@@ -371,6 +372,7 @@ export async function appendToFile(basePath: string, content: string, type: stri
       const data = await readResponse.json();
       existingContent = await maybeDecrypt(data.content || '');
     } else if (readResponse.status !== 404) {
+      console.error(`[心光] 写入失败：读取原文件 ${filePath} 失败，HTTP ${readResponse.status}`);
       return false;
     }
 
@@ -407,8 +409,10 @@ export async function appendToFile(basePath: string, content: string, type: stri
       return true;
     }
 
+    console.error(`[心光] 写入失败：WebDAV 写入 ${filePath} 失败，HTTP ${writeResponse.status}${writeResponse.status === 401 ? '（账号或应用密码错误）' : ''}`);
     return false;
-  } catch {
+  } catch (e) {
+    console.error('[心光] 写入失败：', e);
     return false;
   }
 }

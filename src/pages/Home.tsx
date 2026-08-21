@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain, CheckSquare } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain, CheckSquare, Lock } from 'lucide-react';
 import { version } from '../../package.json';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
@@ -15,6 +15,7 @@ import { AIAnalysis } from '../components/AIAnalysis';
 import { HabitTracker } from '../components/HabitTracker';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { hasCredentials } from '../lib/nutstore';
+import { hasSessionMK, hasLocalEncryptionKeys } from '../lib/crypto';
 import { getPeriodForDate } from '../lib/dateUtils';
 import { syncCategoriesFromNutstore } from '../hooks/useCategories';
 
@@ -34,13 +35,21 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  // v2.3.2 修复：加密已启用但本会话未解锁时，读写云端加密数据会静默失败，
+  // 表现为"输入内容点发送没反应"。用醒目横幅引导用户解锁，而不是等发送失败。
+  const [cryptoLocked, setCryptoLocked] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const { loadEntries, entries } = useSummaryStore();
 
+  const checkCryptoLock = (connected: boolean) => {
+    setCryptoLocked(connected && hasLocalEncryptionKeys() && !hasSessionMK());
+  };
+
   useEffect(() => {
     const connected = hasCredentials();
     setIsConnected(connected);
+    checkCryptoLock(connected);
 
     if (connected) {
       loadEntries();
@@ -207,6 +216,24 @@ export default function Home() {
               </div>
             )}
 
+            {cryptoLocked && (
+              <div className="bg-orange-50 border border-orange-300 rounded-lg p-3 mb-3 flex items-center gap-3">
+                <Lock className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-orange-700">加密会话未解锁</p>
+                  <p className="text-xs text-orange-600/80 leading-relaxed">
+                    云端笔记为加密格式，解锁前无法读取和保存。输入加密密码即可恢复。
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowConfig(true)}
+                  className="px-3 py-1.5 text-xs text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors font-medium flex-shrink-0"
+                >
+                  解锁
+                </button>
+              </div>
+            )}
+
             {isConnected && <QuickRecord />}
 
             <div className="mb-4">
@@ -256,6 +283,7 @@ export default function Home() {
             setShowConfig(false);
             const connected = hasCredentials();
             setIsConnected(connected);
+            checkCryptoLock(connected);
             // v2.3.1 修复：设置窗口内可能刚完成加密解锁/凭据恢复，
             // 关闭时统一重新拉取数据，避免页面停留在解锁前的空列表
             if (connected) {

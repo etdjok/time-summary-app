@@ -4,7 +4,7 @@
 
   "private": true,
 
-  "version": "2.3.0",
+  "version": "2.3.2",
 
   "type": "module",
 
@@ -19,6 +19,7 @@
     "preview": "vite preview",
 
     "check": "tsc -b --noEmit",
+
     "test": "vitest run",
 
     "deploy": "gh-pages -d dist"

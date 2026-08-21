@@ -26,6 +26,7 @@ const API_AUTH_ENABLED = process.env.XINGUANG_API_AUTH === 'on';
 const API_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const AUTH_EXEMPT_PATHS = new Set([
   '/health', '/version', '/auth/verify', '/auth/change-password',
+  '/auth/status', '/auth/setup',
 ]);
 const apiSessions = new Map(); // token -> 签发时间
 
@@ -118,7 +119,8 @@ async function ensurePortAvailable(port) {
 
 // 服务器端密码存储（v2.2 起默认 PBKDF2 哈希，兼容旧明文格式并自动升级）
 const PASSWORD_FILE = path.join(__dirname, 'password.json');
-const DEFAULT_PASSWORD = 'xinguang2026';
+// v2.3.2 安全修复：彻底移除内置默认密码。全新部署首次启动强制设置登录密码，
+// 避免"任何知道开源代码的人都可用默认密码登录"的风险
 const PBKDF2_ITERATIONS = 100000;
 
 function hashPassword(pw) {
@@ -137,7 +139,7 @@ function verifyPasswordHash(pw, stored) {
 function loadPasswordRecord() {
   try {
     if (existsSync(PASSWORD_FILE)) return JSON.parse(readFileSync(PASSWORD_FILE, 'utf-8'));
-  } catch { console.error('[心光] 读取密码文件失败，回退默认密码'); }
+  } catch { console.error('[心光] 读取密码文件失败'); }
   return null;
 }
 
@@ -148,14 +150,14 @@ function setServerPassword(pw) {
 
 function verifyServerPassword(pw) {
   const rec = loadPasswordRecord();
-  if (!rec) return pw === DEFAULT_PASSWORD;
+  if (!rec) return false; // 未设置密码：需走首次设置流程，不再回退默认密码
   if (typeof rec.hash === 'string') return verifyPasswordHash(pw, rec.hash);
   if (rec.password !== undefined) {
     const ok = pw === rec.password;
     if (ok) setServerPassword(pw); // 旧明文验证成功，自动升级为哈希存储
     return ok;
   }
-  return pw === DEFAULT_PASSWORD;
+  return false;
 }
 
 // v2.2 登录限流：同一来源 15 分钟内最多 10 次失败，防止暴力破解
@@ -184,6 +186,26 @@ function recordFailedLogin(ip) {
   list.push(Date.now());
   loginAttempts.set(ip, list);
 }
+
+// v2.3.2 首次使用状态（无需认证）：密码文件不存在时前端引导设置初始密码
+app.get('/api/auth/status', (req, res) => {
+  res.json({ needsSetup: loadPasswordRecord() === null });
+});
+
+// v2.3.2 首次设置登录密码：仅在从未设置过密码时可用，设置后此端点自动关闭
+app.post('/api/auth/setup', (req, res) => {
+  if (loadPasswordRecord() !== null) {
+    res.status(409).json({ success: false, error: '密码已设置，请直接登录' });
+    return;
+  }
+  const { newPassword } = req.body || {};
+  if (typeof newPassword !== 'string' || newPassword.length < 4) {
+    res.status(400).json({ success: false, error: '密码至少4个字符' });
+    return;
+  }
+  setServerPassword(newPassword);
+  res.json({ success: true, token: issueApiToken() });
+});
 
 // 验证密码
 app.post('/api/auth/verify', (req, res) => {

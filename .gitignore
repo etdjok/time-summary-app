@@ -41,3 +41,6 @@ add_delete_feature.py
 # 临时文件
 *.tmp
 
+
+# 服务端密码哈希文件（含盐+哈希，禁止提交）
+api/password.json

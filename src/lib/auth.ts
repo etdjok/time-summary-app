@@ -1,8 +1,4 @@
-﻿const DEFAULT_PASSWORD = 'xinguang2026';
-
-export { DEFAULT_PASSWORD };
-
-const AUTH_TOKEN_KEY = 'heartlight_auth_token';
+﻿const AUTH_TOKEN_KEY = 'heartlight_auth_token';
 
 // 登录会话有效期（小时）
 const SESSION_HOURS = 24;
@@ -91,6 +87,35 @@ export async function verifyPassword(password: string): Promise<VerifyResult> {
     return { success: false, error: 'auth', message: '密码错误，请重试' };
   } catch {
     return { success: false, error: 'network', message: '无法连接服务器，请检查网络或服务器是否运行' };
+  }
+}
+
+// v2.3.2 首次使用检测：服务器未设置过密码时返回 true，前端显示初始化向导
+export async function getAuthStatus(): Promise<{ needsSetup: boolean }> {
+  try {
+    const res = await fetch('/api/auth/status');
+    const data = await res.json();
+    return { needsSetup: data.needsSetup === true };
+  } catch {
+    return { needsSetup: false }; // 网络异常按普通登录处理，避免误进向导
+  }
+}
+
+// v2.3.2 首次设置登录密码（仅服务器从未设置过密码时可用）
+export async function setupPassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/auth/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword }),
+    });
+    const data = await res.json();
+    if (data.success === true && typeof data.token === 'string' && data.token) {
+      try { localStorage.setItem(AUTH_TOKEN_KEY, data.token); } catch { /* iOS 隐私模式等场景忽略 */ }
+    }
+    return data;
+  } catch {
+    return { success: false, error: '网络错误' };
   }
 }
 

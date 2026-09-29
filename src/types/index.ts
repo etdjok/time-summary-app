@@ -25,6 +25,14 @@ export interface MarkdownEntry {
   rawLine?: string;
 }
 
+export interface DocumentFile {
+  fileName: string;
+  path: string;
+  content: string;
+  lastModified?: string;
+  size?: number;
+}
+
 export const PERIOD_LABELS: Record<PeriodType, string> = {
   'day': '日',
   'week': '周',

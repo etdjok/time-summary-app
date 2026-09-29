@@ -1,4 +1,4 @@
-import { MarkdownEntry } from '../types';
+import { MarkdownEntry, DocumentFile } from '../types';
 import { parseMarkdownFile } from './filesmdParser';
 import { apiFetch } from './auth';
 import { maybeEncrypt, maybeDecrypt, encryptCredentials, decryptCredentials, isEncryptedCredentials, getWrappedMKRecovery, RECOVERY_BACKUP_FILENAME, RECOVERY_BACKUP_KEY, hasSessionMK, buildCloudBackupPayload, parseCloudBackup } from './crypto';
@@ -146,7 +146,27 @@ export async function listRootFolders(): Promise<{
   }
 }
 
-export async function fetchFilesMdEntries(basePath: string): Promise<MarkdownEntry[]> {
+export interface LoadEntriesResult {
+  entries: MarkdownEntry[];
+  documents: DocumentFile[];
+}
+
+// 缓存解析：v2.4.2 起为 { entries, documents }；兼容 v2.4.2 前的数组格式
+export function parseCachedResult(raw: string | null): LoadEntriesResult {
+  if (!raw) return { entries: [], documents: [] };
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return { entries: parsed, documents: [] };
+    return {
+      entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+      documents: Array.isArray(parsed.documents) ? parsed.documents : [],
+    };
+  } catch {
+    return { entries: [], documents: [] };
+  }
+}
+
+export async function fetchFilesMdEntries(basePath: string): Promise<LoadEntriesResult> {
   return loadEntries(basePath);
 }
 
@@ -265,10 +285,10 @@ export async function writeFile(path: string, content: string): Promise<{
   }
 }
 
-export async function loadEntries(basePath: string): Promise<MarkdownEntry[]> {
+export async function loadEntries(basePath: string): Promise<LoadEntriesResult> {
   const creds = await getCredentialsAsync();
   if (!creds) {
-    return [];
+    return { entries: [], documents: [] };
   }
 
   try {
@@ -281,34 +301,115 @@ export async function loadEntries(basePath: string): Promise<MarkdownEntry[]> {
     if (!response.ok) {
       const data = await response.json();
       console.error('加载条目失败:', data.error);
-      // 网络失败时回退到本地缓存
-      const cached = localStorage.getItem(LOCAL_CACHE_KEY);
-      if (cached) {
-        try { return JSON.parse(cached); } catch { /* ignore */ }
-      }
-      return [];
+      // 网络失败时回退到本地缓存（兼容 v2.4.2 前的数组格式）
+      return parseCachedResult(localStorage.getItem(LOCAL_CACHE_KEY));
     }
 
     const data = await response.json();
     const allEntries: MarkdownEntry[] = [];
+    const documents: DocumentFile[] = [];
 
-    for (const { fileName, content } of data.entries || []) {
+    for (const { fileName, content, isDoc, lastModified, size } of data.entries || []) {
       const plainContent = await maybeDecrypt(content);
+      if (isDoc) {
+        // v2.4.2 独立文档：整篇进入文档库，不进入条目主流程
+        documents.push({
+          fileName,
+          path: buildDocPath(basePath, fileName),
+          content: plainContent,
+          lastModified,
+          size,
+        });
+        continue;
+      }
       const entries = parseMarkdownFile(plainContent, fileName);
       allEntries.push(...entries);
     }
 
-    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(allEntries));
-    return allEntries;
+    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ entries: allEntries, documents }));
+    return { entries: allEntries, documents };
   } catch (error) {
     console.error('加载条目失败:', error);
-    // 网络失败时回退到本地缓存
-    const cached = localStorage.getItem(LOCAL_CACHE_KEY);
-    if (cached) {
-      try { return JSON.parse(cached); } catch { /* ignore */ }
-    }
-    return [];
+    // 网络失败时回退到本地缓存（兼容 v2.4.2 前的数组格式）
+    return parseCachedResult(localStorage.getItem(LOCAL_CACHE_KEY));
   }
+}
+
+// ========== v2.4.2 独立文档库（{basePath}/文档 下的整文件读写） ==========
+
+export function buildDocPath(basePath: string, fileName: string): string {
+  return `${basePath}/文档/${fileName}`;
+}
+
+// 重名自动追加序号：名称.md → 名称(2).md，绝不覆盖既有文件
+export function pickDocFileName(fileName: string, existingNames: string[]): string {
+  const used = new Set(existingNames);
+  if (!used.has(fileName)) return fileName;
+  const dot = fileName.lastIndexOf('.');
+  const base = dot > 0 ? fileName.slice(0, dot) : fileName;
+  const ext = dot > 0 ? fileName.slice(dot) : '';
+  let seq = 2;
+  while (used.has(`${base}(${seq})${ext}`)) seq++;
+  return `${base}(${seq})${ext}`;
+}
+
+export async function ensureDocDir(basePath: string): Promise<boolean> {
+  const creds = await getCredentialsAsync();
+  if (!creds) return false;
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/mkdir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: creds.username, password: creds.password, dirPath: `${basePath}/文档` }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+// 列出《文档》目录文件名；失败返回 null（导入时宁可不写也不覆盖）
+export async function listDocDir(basePath: string): Promise<string[] | null> {
+  const creds = await getCredentialsAsync();
+  if (!creds) return null;
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/list`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: creds.username,
+        password: creds.password,
+        dirPath: `${basePath}/文档`,
+        extensions: ['.md', '.markdown', '.txt'],
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return Array.isArray(data.files) ? data.files : [];
+  } catch {
+    return null;
+  }
+}
+
+// 独立文档写入：确保目录 → 冲突检测（实时目录 + 本批已用名）→ 加密整篇写入
+export async function writeDocument(
+  basePath: string,
+  fileName: string,
+  content: string,
+  usedNames: string[] = []
+): Promise<{ success: boolean; fileName?: string; error?: string }> {
+  const dirReady = await ensureDocDir(basePath);
+  if (!dirReady) return { success: false, error: '创建《文档》目录失败' };
+
+  const existing = await listDocDir(basePath);
+  if (existing === null) return { success: false, error: '读取《文档》目录失败' };
+
+  const finalName = pickDocFileName(fileName, [...existing, ...usedNames]);
+  const result = await writeFile(buildDocPath(basePath, finalName), content);
+  if (!result.success) return { success: false, error: result.error };
+
+  localStorage.removeItem(LOCAL_CACHE_KEY);
+  return { success: true, fileName: finalName };
 }
 
 export async function deleteFile(path: string): Promise<{ 

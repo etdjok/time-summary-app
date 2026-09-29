@@ -271,6 +271,26 @@ async function makeNutstoreRequest(url, options = {}) {
   return response;
 }
 
+// v2.4.2 从 WebDAV 响应中提取元数据（修改时间/大小）；既有仅用 href 的调用不受影响
+function extractWebDAVMeta(response) {
+  const propstatsRaw = response.propstat || response['d:propstat'];
+  const propstats = Array.isArray(propstatsRaw) ? propstatsRaw : (propstatsRaw ? [propstatsRaw] : []);
+  for (const ps of propstats) {
+    const prop = (ps && (ps.prop || ps['d:prop'])) || null;
+    if (!prop) continue;
+    const lastModified = prop.getlastmodified || prop['d:getlastmodified'];
+    const sizeRaw = prop.getcontentlength || prop['d:getcontentlength'];
+    if (lastModified || sizeRaw !== undefined) {
+      const size = sizeRaw === undefined || sizeRaw === null || sizeRaw === '' ? NaN : Number(sizeRaw);
+      return {
+        lastModified: typeof lastModified === 'string' ? lastModified : undefined,
+        size: Number.isFinite(size) ? size : undefined,
+      };
+    }
+  }
+  return {};
+}
+
 async function parseWebDAVResponse(xmlText) {
   try {
     const result = await parseStringPromise(xmlText, {
@@ -285,7 +305,7 @@ async function parseWebDAVResponse(xmlText) {
     
     return responses.map(response => {
       const href = response.href || response['d:href'] || '';
-      return { href };
+      return { href, ...extractWebDAVMeta(response) };
     });
   } catch (error) {
     console.error('XML解析失败:', error);
@@ -360,7 +380,9 @@ app.post('/api/nutstore/test', async (req, res) => {
 // 列出目录
 app.post('/api/nutstore/list', async (req, res) => {
   try {
-    const { username, password, dirPath } = req.body;
+    const { username, password, dirPath, extensions } = req.body;
+    // v2.4.2 可选扩展名过滤：不传时与既有一致（仅 .md）
+    const fileExtensions = Array.isArray(extensions) && extensions.length > 0 ? extensions : ['.md'];
     
     const encodedPath = encodePath(dirPath);
     const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedPath}`, {
@@ -385,7 +407,7 @@ app.post('/api/nutstore/list', async (req, res) => {
     for (const { href } of responses) {
       const name = decodeURIComponent(href.split('/').filter(Boolean).pop() || '');
       if (name && name !== dirName) {
-        if (name.endsWith('.md')) {
+        if (fileExtensions.some(ext => name.endsWith(ext))) {
           files.push(name);
         } else if (!name.includes('.')) {
           folders.push(name);
@@ -522,36 +544,46 @@ app.post('/api/nutstore/write', async (req, res) => {
 // 获取 files.md 条目（v2.2 重构：根目录/journal/brain 三段统一处理，文件读取并发化）
 const EXCLUDED_ROOT_FILES = ['help.md', 'readme.md', 'about.md'];
 
-async function listMdFilesInDir(username, password, encodedDirPath) {
+async function listMdFilesInDir(username, password, encodedDirPath, extensions = ['.md']) {
   const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedDirPath}`, {
     username, password, method: 'PROPFIND', headers: { 'Depth': '1' },
   });
   if (!response.ok) return []; // 目录不存在等情形按空处理，与原行为一致
   const responses = await parseWebDAVResponse(await response.text());
   const files = [];
-  for (const { href } of responses) {
+  for (const { href, lastModified, size } of responses) {
     const fileName = decodeURIComponent(href.split('/').filter(Boolean).pop() || '');
-    if (fileName && fileName.endsWith('.md')) files.push(fileName);
+    if (fileName && extensions.some(ext => fileName.endsWith(ext))) {
+      files.push({ fileName, lastModified, size });
+    }
   }
   return files;
 }
 
 // 并发读取目录下文件内容（并发上限 4，避免触发坚果云限流；单文件失败跳过）
-async function fetchMdContentsConcurrent(username, password, encodedDirPath, fileNames, limit = 4) {
+async function fetchMdContentsConcurrent(username, password, encodedDirPath, fileEntries, limit = 4) {
   const results = [];
   let idx = 0;
   async function worker() {
-    while (idx < fileNames.length) {
-      const fileName = fileNames[idx++];
+    while (idx < fileEntries.length) {
+      const entry = fileEntries[idx++];
+      const fileName = typeof entry === 'string' ? entry : entry.fileName;
       try {
         const r = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedDirPath}/${encodeURIComponent(fileName)}`, {
           username, password, method: 'GET',
         });
-        if (r.ok) results.push({ fileName, content: await r.text() });
+        if (r.ok) {
+          const item = { fileName, content: await r.text() };
+          if (entry && typeof entry === 'object') {
+            item.lastModified = entry.lastModified;
+            item.size = entry.size;
+          }
+          results.push(item);
+        }
       } catch { /* 单文件读取失败跳过，与原行为一致 */ }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(limit, fileNames.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(limit, fileEntries.length) }, worker));
   return results;
 }
 
@@ -562,10 +594,15 @@ app.post('/api/nutstore/filesmd', async (req, res) => {
     for (const sub of ['', '/journal', '/brain']) {
       const encoded = encodePath(`${basePath}${sub}`);
       let files = await listMdFilesInDir(username, password, encoded);
-      if (!sub) files = files.filter(f => !EXCLUDED_ROOT_FILES.includes(f.toLowerCase()));
+      if (!sub) files = files.filter(f => !EXCLUDED_ROOT_FILES.includes(f.fileName.toLowerCase()));
       const entries = await fetchMdContentsConcurrent(username, password, encoded, files);
       allEntries.push(...entries);
     }
+    // v2.4.2 独立文档库：/文档 目录按整文件返回（isDoc 标记，客户端不进入条目流）
+    const docEncoded = encodePath(`${basePath}/文档`);
+    const docFiles = await listMdFilesInDir(username, password, docEncoded, ['.md', '.markdown', '.txt']);
+    const docEntries = await fetchMdContentsConcurrent(username, password, docEncoded, docFiles);
+    for (const e of docEntries) allEntries.push({ ...e, isDoc: true });
     res.json({ entries: allEntries });
   } catch (error) {
     console.error('读取 files.md 失败:', error);

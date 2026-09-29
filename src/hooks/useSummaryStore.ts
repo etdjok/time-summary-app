@@ -1,10 +1,11 @@
 ﻿import { create } from 'zustand';
-import { MarkdownEntry, Period, PeriodType } from '../types';
+import { MarkdownEntry, Period, PeriodType, DocumentFile } from '../types';
 import { getPeriodForDate } from '../lib/dateUtils';
 import { fetchFilesMdEntries, appendToChatMd, appendToTodoMd, appendToJournalMd, appendToIdeaMd, appendToNoteMd, appendToFile, readFile, writeFile } from '../lib/nutstore';
 
 interface SummaryStore {
   entries: MarkdownEntry[];
+  documents: DocumentFile[];
   currentPeriod: Period;
   periodType: PeriodType;
   loading: boolean;
@@ -23,6 +24,8 @@ interface SummaryStore {
   updateEntry: (entryId: string, updates: Partial<MarkdownEntry>) => Promise<boolean>;
   deleteEntry: (entryId: string) => Promise<boolean>;
   editEntry: (entryId: string, newContent: string) => Promise<boolean>;
+  updateDocumentContent: (path: string, content: string) => void;
+  removeDocumentByPath: (path: string) => void;
   
   getPeriodEntries: () => MarkdownEntry[];
   getStats: () => { 
@@ -136,6 +139,7 @@ function matchEntryLine(line: string, entry: MarkdownEntry, preferOriginal: bool
 
 export const useSummaryStore = create<SummaryStore>()((set, get) => ({
   entries: [],
+  documents: [],
   currentPeriod: getPeriodForDate(new Date(), 'week'),
   periodType: 'week',
   loading: false,
@@ -198,8 +202,8 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
   loadEntries: async () => {
     set({ loading: true, error: null });
     try {
-      const entries = await fetchFilesMdEntries(get().nutstoreBasePath);
-      set({ entries, loading: false });
+      const { entries, documents } = await fetchFilesMdEntries(get().nutstoreBasePath);
+      set({ entries, documents, loading: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : '读取失败';
       set({ loading: false, error: message });
@@ -434,6 +438,18 @@ export const useSummaryStore = create<SummaryStore>()((set, get) => ({
     }
     
     return false;
+  },
+
+  updateDocumentContent: (path: string, content: string) => {
+    set({
+      documents: get().documents.map(doc => (doc.path === path ? { ...doc, content } : doc)),
+    });
+  },
+
+  removeDocumentByPath: (path: string) => {
+    set({
+      documents: get().documents.filter(doc => doc.path !== path),
+    });
   },
 
   editEntry: async (entryId: string, newContent: string): Promise<boolean> => {

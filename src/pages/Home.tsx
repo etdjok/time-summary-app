@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, List, Grid3x3, Calendar, Brain, CheckSquare, Lock } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, FileText, List, Grid3x3, Calendar, Brain, CheckSquare, Lock } from 'lucide-react';
 import { version } from '../../package.json';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
@@ -10,6 +10,7 @@ import { CategoryManager } from '../components/CategoryManager';
 import { HelpPage } from '../components/HelpPage';
 import { Changelog } from '../components/Changelog';
 import { ImportExportModal } from '../components/ImportExportModal';
+import { DocumentLibrary } from '../components/DocumentLibrary';
 import { QuadrantView } from '../components/QuadrantView';
 import { HeatmapView } from '../components/HeatmapView';
 import { AIAnalysis } from '../components/AIAnalysis';
@@ -36,13 +37,14 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
+  const [showDocLibrary, setShowDocLibrary] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   // v2.3.2 修复：加密已启用但本会话未解锁时，读写云端加密数据会静默失败，
   // 表现为"输入内容点发送没反应"。用醒目横幅引导用户解锁，而不是等发送失败。
   const [cryptoLocked, setCryptoLocked] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [typeFilter, setTypeFilter] = useState<string>('all');
-  const { loadEntries, entries } = useSummaryStore();
+  const { loadEntries } = useSummaryStore();
 
   const checkCryptoLock = (connected: boolean) => {
     setCryptoLocked(connected && hasLocalEncryptionKeys() && !hasSessionMK());
@@ -91,6 +93,13 @@ export default function Home() {
               title="导入导出"
             >
               <Download className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setShowDocLibrary(true)}
+              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
+              title="文档库"
+            >
+              <FileText className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowHelp(true)}
@@ -262,6 +271,15 @@ export default function Home() {
 
       {showImportExport && (
         <ImportExportModal onClose={() => setShowImportExport(false)} />
+      )}
+      {showDocLibrary && (
+        <DocumentLibrary
+          onClose={() => setShowDocLibrary(false)}
+          onGoImport={() => {
+            setShowDocLibrary(false);
+            setShowImportExport(true);
+          }}
+        />
       )}
     </div>
   );

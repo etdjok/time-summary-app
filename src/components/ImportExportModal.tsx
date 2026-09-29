@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Download, Upload, FileText, CheckCircle, AlertCircle, MessageSquare, BookOpen, CheckCircle as CheckCircleIcon, Lightbulb, FileText as NoteIcon } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
-import { getCredentialsAsync } from '../lib/nutstore';
+import { getCredentialsAsync, writeDocument } from '../lib/nutstore';
 
 interface ImportExportModalProps {
   onClose: () => void;
@@ -25,6 +25,7 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
   const [importCategory, setImportCategory] = useState<ImportCategory>('chat');
+  const [importMode, setImportMode] = useState<'document' | 'split'>('document');
 
   const handleExport = async (format: 'json' | 'markdown') => {
     setIsExporting(true);
@@ -85,25 +86,62 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
     }
   };
 
+  // v2.4.2 独立文档导入：逐文件写入云端《文档》，单文件失败不影响其他
+  const importAsDocuments = async (allFiles: File[]) => {
+    const { nutstoreBasePath } = useSummaryStore.getState();
+    const usedNames: string[] = [];
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+
+    for (const f of allFiles) {
+      if (!f.name.endsWith('.md') && !f.name.endsWith('.markdown') && !f.name.endsWith('.txt')) {
+        failed.push(`${f.name}（独立文档模式仅支持 .md/.markdown/.txt）`);
+        continue;
+      }
+      const text = await f.text();
+      const result = await writeDocument(nutstoreBasePath, f.name, text, usedNames);
+      if (result.success && result.fileName) {
+        succeeded.push(f.name === result.fileName ? f.name : `${f.name} → ${result.fileName}`);
+        usedNames.push(result.fileName);
+      } else {
+        failed.push(`${f.name}（${result.error || '未知错误'}）`);
+      }
+    }
+
+    const summary: string[] = [];
+    if (succeeded.length > 0) summary.push(`已存入文档库 ${succeeded.length} 个文件：\n${succeeded.join('\n')}`);
+    if (failed.length > 0) summary.push(`失败 ${failed.length} 个：\n${failed.join('\n')}`);
+    setMessage(summary.join('\n\n'));
+    setMessageType(succeeded.length > 0 ? 'success' : 'error');
+    loadEntries();
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = Array.from(e.target.files || []);
+    if (fileList.length === 0) return;
+    const file = fileList[0];
 
     setIsImporting(true);
     setMessage('');
-    console.log('[心光] 导入文件:', file.name, '大小:', file.size, '类型:', file.type, '目标分类:', importCategory);
 
     try {
-      const text = await file.text();
-      console.log('[心光] 文件内容前100字符:', text.substring(0, 100));
       const creds = await getCredentialsAsync();
       if (!creds) {
         setMessage('请先配置坚果云账号');
         setMessageType('error');
-        setIsImporting(false);
         return;
       }
 
+      const isMdTxt = (name: string) =>
+        name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt');
+
+      // 独立文档模式：整篇原文保存到云端《文档》目录
+      if (importMode === 'document') {
+        await importAsDocuments(fileList);
+        return;
+      }
+
+      const text = await file.text();
       let importedCount = 0;
 
       if (file.name.endsWith('.json')) {
@@ -123,7 +161,7 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
           const success = await addEntry(content, target);
           if (success) importedCount++;
         }
-      } else if (file.name.endsWith('.md') || file.name.endsWith('.markdown') || file.name.endsWith('.txt')) {
+      } else if (isMdTxt(file.name)) {
         // Markdown/TXT import - 使用用户选择的分类
         const lines = text.split('\n');
         const { addEntry } = useSummaryStore.getState();
@@ -214,30 +252,59 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
               <Upload className="w-4 h-4" /> 导入数据
             </h3>
             
-            {/* 分类选择器（仅对 MD/TXT 生效） */}
-            <div className="mb-3">
-              <p className="text-xs text-gray-500 mb-2">选择分类（MD/TXT 文件使用）：</p>
-              <div className="flex flex-wrap gap-1.5">
-                {IMPORT_CATEGORIES.map((cat) => {
-                  const Icon = cat.icon;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setImportCategory(cat.id)}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                        importCategory === cat.id
-                          ? `${cat.color} text-white`
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {cat.label}
-                    </button>
-                  );
-                })}
-              </div>
+            {/* v2.4.2 导入模式切换：默认独立文档，可切回原逐条导入 */}
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-2">
+              <button
+                type="button"
+                onClick={() => setImportMode('document')}
+                className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-lg transition-all ${
+                  importMode === 'document' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                独立文档
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportMode('split')}
+                className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-lg transition-all ${
+                  importMode === 'split' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                逐条导入到分类
+              </button>
             </div>
+            <p className="text-xs text-gray-400 mb-3">
+              {importMode === 'document'
+                ? '整篇原文保存到坚果云《文档》，保留原文件名，可在「文档库」中阅读与编辑'
+                : '按行拆分为记录，导入到下方选择的分类（原行为）'}
+            </p>
+
+            {/* 分类选择器（仅逐条模式对 MD/TXT 生效） */}
+            {importMode === 'split' && (
+              <div className="mb-3">
+                <p className="text-xs text-gray-500 mb-2">选择分类（MD/TXT 文件使用）：</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {IMPORT_CATEGORIES.map((cat) => {
+                    const Icon = cat.icon;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setImportCategory(cat.id)}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                          importCategory === cat.id
+                            ? `${cat.color} text-white`
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-colors">
               <Upload className="w-5 h-5 text-gray-400" />
@@ -245,14 +312,15 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
               <input
                 type="file"
                 accept=".json,.md,.txt,.markdown"
+                multiple
                 onChange={handleImport}
                 disabled={isImporting}
                 className="hidden"
               />
             </label>
             <p className="text-xs text-gray-400 mt-1">
-              支持 .json、.md 和 .txt 格式<br/>
-              <span className="text-amber-600">* JSON 文件保留原分类，MD/TXT 使用上方选择的分类</span>
+              支持 .json、.md 和 .txt 格式（可多选）<br/>
+              <span className="text-amber-600">* JSON 文件保留原分类；独立文档模式整篇存入《文档》，逐条模式使用上方选择的分类</span>
             </p>
           </div>
 

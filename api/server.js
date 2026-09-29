@@ -480,7 +480,7 @@ app.post('/api/nutstore/mkdir', async (req, res) => {
     }
 
     const encodedPath = encodePath(dirPath);
-    const response = await makeNutstoreRequest('https://dav.jianguoyun.com/dav/' + '/' + encodedPath, {
+    const response = await makeNutstoreRequest(`${NUTSTORE_WEBDAV_URL}/${encodedPath}`, {
       username,
       password,
       method: 'MKCOL',
@@ -490,6 +490,7 @@ app.post('/api/nutstore/mkdir', async (req, res) => {
       res.json({ success: true });
     } else {
       const errText = await response.text().catch(() => '');
+      console.error('[心光] 创建目录失败:', response.status, errText.slice(0, 200));
       res.status(response.status).json({
         error: '创建目录失败(' + response.status + ')',
         detail: errText.slice(0, 200),

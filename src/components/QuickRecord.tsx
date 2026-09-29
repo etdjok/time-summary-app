@@ -1,8 +1,10 @@
-﻿import { useState, useCallback, useEffect, useRef } from 'react';
-import { Send, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Grid3x3, AlertTriangle, Target, Clock, MinusCircle, Mic, MicOff, Sparkles } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Send, MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText, Star, Heart, Flag, Tag, Bookmark, Bell, Calendar, Mail, Music, Camera, ShoppingCart, Grid3x3, AlertTriangle, Target, Clock, MinusCircle, Mic, MicOff, Sparkles, X, Maximize2, PenTool, Type } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
 import { aiClassifyContent } from '../lib/aiClassifier';
+import { MarkdownEditor } from './MarkdownEditor';
+import { DrawingCanvas } from './DrawingCanvas';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageSquare, CheckCircle, Lightbulb, BookOpen, FileText,
@@ -16,7 +18,10 @@ const quadrants = [
   { id: 'low', label: 'Q4 不紧急不重要', icon: MinusCircle, color: 'bg-gray-500', activeColor: 'bg-gray-100 text-gray-600 border-gray-300' },
 ] as const;
 
-// 声明 Web Speech API 类型（浏览器无内置 TS 定义，按用到的最小面声明）
+// 输入模式
+type InputMode = 'text' | 'markdown' | 'drawing';
+
+// 声明 Web Speech API 类型
 interface SpeechRecognitionEventLike {
   results: { 0: { 0: { transcript: string } } };
 }
@@ -49,6 +54,8 @@ export function QuickRecord() {
   const [isListening, setIsListening] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
   const [aiClassifiedCategory, setAiClassifiedCategory] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<InputMode>('text');
+  const [showFullScreen, setShowFullScreen] = useState(false);
   const { addEntry, loadEntries } = useSummaryStore();
   const { categories } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id || 'chat');
@@ -84,7 +91,6 @@ export function QuickRecord() {
 
   const handleVoiceInput = useCallback(() => {
     if (isListening) {
-      // 停止录音
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
@@ -116,14 +122,13 @@ export function QuickRecord() {
 
   // AI语义识别自动分类
   const handleAiClassify = useCallback(async () => {
-    if (!content.trim() || selectedCategory) return; // 用户手动选择了分类则不AI分类
+    if (!content.trim() || selectedCategory) return;
     
     setIsClassifying(true);
     try {
       const result = await aiClassifyContent(content.trim(), categories, selectedCategory);
       if (result && result !== selectedCategory) {
         setAiClassifiedCategory(result);
-        // 短暂显示AI分类结果后自动切换
         setTimeout(() => {
           setSelectedCategory(result);
           setAiClassifiedCategory(null);
@@ -148,7 +153,6 @@ export function QuickRecord() {
     try {
       let targetCategory = activeCategory;
 
-      // 如果用户没有手动选择分类，尝试AI自动分类
       if (!selectedCategory) {
         const aiResult = await aiClassifyContent(content.trim(), categories, selectedCategory);
         if (aiResult) {
@@ -170,7 +174,6 @@ export function QuickRecord() {
         setTimeout(() => setShowSuccess(false), 2000);
         loadEntries();
       } else {
-        // 保存失败必须显式反馈，否则表现为"点击发送无反应"（内容保留以便重试）
         setSaveError('保存失败：未能写入坚果云。常见原因：坚果云账号/应用密码已失效、加密会话未解锁、或网络中断。内容已保留，可重试。');
         console.error('[心光] addEntry 写入失败，详情见控制台网络请求 /api/nutstore/write');
       }
@@ -187,6 +190,182 @@ export function QuickRecord() {
     setAiClassifiedCategory(null);
   };
 
+  // 全屏编辑器（Markdown 或 涂鸦）
+  if (showFullScreen) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-amber-50">
+          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+            {inputMode === 'markdown' ? (
+              <><Type className="w-5 h-5 text-amber-500" /> Markdown 编辑</>
+            ) : (
+              <><PenTool className="w-5 h-5 text-amber-500" /> 涂鸦编辑</>
+            )}
+          </h3>
+          <button
+            onClick={() => setShowFullScreen(false)}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 p-4 overflow-hidden flex flex-col">
+          {/* 分类选择 */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {categories.map((option) => {
+              const Icon = ICON_MAP[option.icon] || MessageSquare;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => handleCategorySelect(option.id)}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-all ${
+                    selectedCategory === option.id
+                      ? `${option.color} text-white`
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {option.label && option.label.startsWith('custom_') ? (option.id.startsWith('custom_') ? option.id.slice(7) : option.label.slice(7)) : option.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 四象限选择 */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {quadrants.map((q) => {
+              const Icon = q.icon;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPriority(selectedPriority === q.id ? null : q.id);
+                  }}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border transition-all ${
+                    selectedPriority === q.id
+                      ? q.activeColor
+                      : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {q.label}
+                </button>
+              );
+            })}
+            {selectedPriority && (
+              <button
+                type="button"
+                onClick={() => setSelectedPriority(null)}
+                className="px-2.5 py-1 text-xs text-gray-400 hover:text-gray-600"
+              >
+                清除象限
+              </button>
+            )}
+          </div>
+
+          {/* 编辑区域 */}
+          {inputMode === 'markdown' ? (
+            <MarkdownEditor
+              value={content}
+              onChange={setContent}
+              placeholder="使用 Markdown 格式编写...&#10;&#10;支持：&#10;# 标题&#10;**粗体** _斜体_&#10;- 列表&#10;> 引用&#10;`代码`"
+              className="flex-1"
+            />
+          ) : (
+            <DrawingCanvas
+              onSave={(imageData) => {
+                setContent(imageData);
+                setShowFullScreen(false);
+              }}
+              className="flex-1"
+            />
+          )}
+
+          {/* 底部按钮 */}
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex gap-2">
+              {/* 语音输入按钮 */}
+              <button
+                type="button"
+                onClick={handleVoiceInput}
+                disabled={isSaving || inputMode === 'drawing'}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                  isListening
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                } ${inputMode === 'drawing' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={isListening ? '点击停止录音' : '语音输入'}
+              >
+                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+              {/* AI分类按钮 */}
+              <button
+                type="button"
+                onClick={handleAiClassify}
+                disabled={!content.trim() || isClassifying || !!selectedCategory || inputMode === 'drawing'}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                  content.trim() && !isClassifying && !selectedCategory && inputMode !== 'drawing'
+                    ? 'bg-purple-100 text-purple-600 hover:bg-purple-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+                title={selectedCategory ? '已手动选择分类' : 'AI自动分类'}
+              >
+                {isClassifying ? (
+                  <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Sparkles className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setContent('');
+                  setShowFullScreen(false);
+                }}
+                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={async () => {
+                  if (!content.trim()) return;
+                  setShowFullScreen(false);
+                  // 触发保存
+                  setIsSaving(true);
+                  setSaveError(null);
+                  try {
+                    const priority = selectedPriority as 'urgent' | 'high' | 'medium' | 'low' | undefined;
+                    const success = await addEntry(content.trim(), activeCategory.target, activeCategory.id, priority);
+                    if (success) {
+                      setContent('');
+                      setSelectedPriority(null);
+                      setShowSuccess(true);
+                      setTimeout(() => setShowSuccess(false), 2000);
+                      loadEntries();
+                    } else {
+                      setSaveError('保存失败，内容已保留，可重试。');
+                    }
+                  } catch (e) {
+                    setSaveError(`保存失败：${e instanceof Error ? e.message : '未知错误'}`);
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }}
+                disabled={!content.trim() || isSaving}
+                className="px-4 py-2 text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 mb-4">
       <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -195,6 +374,7 @@ export function QuickRecord() {
       </h3>
 
       <form onSubmit={handleSubmit}>
+        {/* 分类选择 */}
         <div className="flex flex-wrap gap-1.5 mb-3">
           {categories.map((option) => {
             const Icon = ICON_MAP[option.icon] || MessageSquare;
@@ -280,64 +460,107 @@ export function QuickRecord() {
           )}
         </div>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder={activeCategory?.target === 'todo' ? '添加待办事项...' : '记录想法、笔记...'}
-            className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-            disabled={isSaving}
-            autoFocus
-          />
-          {/* 语音输入按钮 */}
+        {/* 输入模式选择 */}
+        <div className="flex gap-1.5 mb-3">
           <button
             type="button"
-            onClick={handleVoiceInput}
-            disabled={isSaving}
-            className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
-              isListening
-                ? 'bg-red-500 text-white animate-pulse'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+            onClick={() => setInputMode('text')}
+            className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              inputMode === 'text'
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
             }`}
-            title={isListening ? '点击停止录音' : '语音输入'}
           >
-            {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            <MessageSquare className="w-3.5 h-3.5" />
+            文本
           </button>
-          {/* AI分类按钮 */}
           <button
             type="button"
-            onClick={handleAiClassify}
-            disabled={!content.trim() || isClassifying || !!selectedCategory}
-            className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
-              content.trim() && !isClassifying && !selectedCategory
-                ? 'bg-purple-100 text-purple-600 hover:bg-purple-200'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            onClick={() => { setInputMode('markdown'); setShowFullScreen(true); }}
+            className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              inputMode === 'markdown'
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
             }`}
-            title={selectedCategory ? '已手动选择分类' : 'AI自动分类'}
           >
-            {isClassifying ? (
-              <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Sparkles className="w-5 h-5" />
-            )}
+            <Type className="w-3.5 h-3.5" />
+            Markdown
           </button>
           <button
-            type="submit"
-            disabled={!content.trim() || isSaving}
-            className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
-              content.trim() && !isSaving
-                ? 'bg-amber-500 text-white hover:bg-amber-600'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            type="button"
+            onClick={() => { setInputMode('drawing'); setShowFullScreen(true); }}
+            className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              inputMode === 'drawing'
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
             }`}
           >
-            {isSaving ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Send className="w-5 h-5" />
-            )}
+            <PenTool className="w-3.5 h-3.5" />
+            涂鸦
           </button>
         </div>
+
+        {/* 快速输入框（仅文本模式显示） */}
+        {inputMode === 'text' && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder={activeCategory?.target === 'todo' ? '添加待办事项...' : '记录想法、笔记...'}
+              className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+              disabled={isSaving}
+              autoFocus
+            />
+            {/* 语音输入按钮 */}
+            <button
+              type="button"
+              onClick={handleVoiceInput}
+              disabled={isSaving}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+              }`}
+              title={isListening ? '点击停止录音' : '语音输入'}
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
+            {/* AI分类按钮 */}
+            <button
+              type="button"
+              onClick={handleAiClassify}
+              disabled={!content.trim() || isClassifying || !!selectedCategory}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                content.trim() && !isClassifying && !selectedCategory
+                  ? 'bg-purple-100 text-purple-600 hover:bg-purple-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              title={selectedCategory ? '已手动选择分类' : 'AI自动分类'}
+            >
+              {isClassifying ? (
+                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Sparkles className="w-5 h-5" />
+              )}
+            </button>
+            <button
+              type="submit"
+              disabled={!content.trim() || isSaving}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                content.trim() && !isSaving
+                  ? 'bg-amber-500 text-white hover:bg-amber-600'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {isSaving ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+        )}
       </form>
 
       {showSuccess && (

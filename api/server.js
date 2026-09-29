@@ -63,11 +63,10 @@ const DIST_DIR = path.join(__dirname, '..', 'dist');
 app.use(express.static(DIST_DIR, {
   setHeaders: (res, filePath) => {
     res.setHeader('X-Version', APP_VERSION);
-    if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.endsWith('registerSW.js')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
+    // 对所有文件禁用缓存，强制浏览器获取最新版本
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
   },
 }));
 

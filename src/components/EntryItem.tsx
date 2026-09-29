@@ -3,6 +3,7 @@ import { CheckCircle, MessageSquare, BookOpen, Lightbulb, FileText, ChevronDown,
 import { MarkdownEntry, FILE_TYPE_LABELS } from '../types';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { useCategories } from '../hooks/useCategories';
+import { MarkdownPreview } from './MarkdownPreview';
 
 // 清理显示内容：去掉 @cat:xxx 和 #priority 等元数据标签
 function cleanDisplayContent(content: string): string {
@@ -291,9 +292,12 @@ export function EntryItem({ entry }: EntryItemProps) {
                       const lines = entry.content.split('\n');
                       const editLineCount = lines.filter(l => /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}/.test(l.trim())).length;
                       const displayLines = editLineCount > 0 ? lines.slice(0, 1) : lines.slice(0, 3);
+                      const previewContent = cleanDisplayContent(displayLines.join('\n'));
                       return (
                         <>
-                          <div className="whitespace-pre-line">{cleanDisplayContent(displayLines.join('\n'))}</div>
+                          <div className="whitespace-pre-line">
+                            <MarkdownPreview content={previewContent} />
+                          </div>
                           {editLineCount > 0 && (
                             <p className="text-xs text-gray-400">
                               含 {editLineCount} 条编辑记录 {isExpanded ? '（点击收起）' : '（点击展开）'}
@@ -304,8 +308,8 @@ export function EntryItem({ entry }: EntryItemProps) {
                     })()}
                   </div>
                 ) : (
-                  <div className="bg-gray-50 rounded-lg p-3 -mx-2 whitespace-pre-line text-gray-700">
-                    {cleanDisplayContent(entry.content)}
+                  <div className="bg-gray-50 rounded-lg p-3 -mx-2">
+                    <MarkdownPreview content={cleanDisplayContent(entry.content)} />
                   </div>
                 )}
               </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, Upload, List, Grid3x3, Calendar, Brain, CheckSquare, Lock } from 'lucide-react';
+import { Settings, Cloud, ExternalLink, HelpCircle, Tags, Clock, Download, List, Grid3x3, Calendar, Brain, CheckSquare, Lock } from 'lucide-react';
 import { version } from '../../package.json';
 import { PeriodNavigation } from '../components/PeriodNavigation';
 import { StatsCard } from '../components/StatsCard';
@@ -9,6 +9,7 @@ import { NutstoreConfig } from '../components/NutstoreConfig';
 import { CategoryManager } from '../components/CategoryManager';
 import { HelpPage } from '../components/HelpPage';
 import { Changelog } from '../components/Changelog';
+import { ImportExportModal } from '../components/ImportExportModal';
 import { QuadrantView } from '../components/QuadrantView';
 import { HeatmapView } from '../components/HeatmapView';
 import { AIAnalysis } from '../components/AIAnalysis';
@@ -34,6 +35,7 @@ export default function Home() {
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showImportExport, setShowImportExport] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   // v2.3.2 修复：加密已启用但本会话未解锁时，读写云端加密数据会静默失败，
   // 表现为"输入内容点发送没反应"。用醒目横幅引导用户解锁，而不是等发送失败。
@@ -57,47 +59,6 @@ export default function Home() {
       syncCategoriesFromNutstore();
     }
   }, [loadEntries]);
-
-  const handleExport = () => {
-    const data = {
-      version: '1.15',
-      exportDate: new Date().toISOString(),
-      entries: entries,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `心光 - 导出-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const data = JSON.parse(event.target?.result as string);
-          if (data.entries && Array.isArray(data.entries)) {
-            alert(`导入成功！共 ${data.entries.length} 条记录。\n注意：导入功能需要手动将数据同步到坚果云。`);
-          } else {
-            alert('文件格式不正确');
-          }
-        } catch {
-          alert('文件解析失败');
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  };
 
   const handleTypeClick = (type: string) => {
     setTypeFilter(type);
@@ -125,18 +86,11 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-1.5">
             <button
-              onClick={handleExport}
+              onClick={() => setShowImportExport(true)}
               className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
-              title="导出数据"
+              title="导入导出"
             >
               <Download className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleImport}
-              className="p-2.5 rounded-xl bg-white text-gray-500 hover:text-amber-500 hover:bg-amber-50 shadow-sm transition-all"
-              title="导入数据"
-            >
-              <Upload className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowHelp(true)}
@@ -304,6 +258,10 @@ export default function Home() {
 
       {showChangelog && (
         <Changelog onClose={() => setShowChangelog(false)} />
+      )}
+
+      {showImportExport && (
+        <ImportExportModal onClose={() => setShowImportExport(false)} />
       )}
     </div>
   );

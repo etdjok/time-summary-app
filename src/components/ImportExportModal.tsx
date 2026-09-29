@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Download, Upload, FileText, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Download, Upload, FileText, CheckCircle, AlertCircle, MessageSquare, BookOpen, CheckCircle as CheckCircleIcon, Lightbulb, FileText as NoteIcon } from 'lucide-react';
 import { useSummaryStore } from '../hooks/useSummaryStore';
 import { getCredentialsAsync } from '../lib/nutstore';
 
@@ -7,12 +7,24 @@ interface ImportExportModalProps {
   onClose: () => void;
 }
 
+// 导入分类选项
+const IMPORT_CATEGORIES = [
+  { id: 'chat', label: '聊天', icon: MessageSquare, color: 'bg-blue-500' },
+  { id: 'journal', label: '日记', icon: BookOpen, color: 'bg-green-500' },
+  { id: 'todo', label: '待办', icon: CheckCircleIcon, color: 'bg-amber-500' },
+  { id: 'idea', label: '想法', icon: Lightbulb, color: 'bg-pink-500' },
+  { id: 'note', label: '笔记', icon: NoteIcon, color: 'bg-purple-500' },
+] as const;
+
+type ImportCategory = typeof IMPORT_CATEGORIES[number]['id'];
+
 export function ImportExportModal({ onClose }: ImportExportModalProps) {
   const { entries, loadEntries } = useSummaryStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
+  const [importCategory, setImportCategory] = useState<ImportCategory>('chat');
 
   const handleExport = async (format: 'json' | 'markdown') => {
     setIsExporting(true);
@@ -79,9 +91,11 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
 
     setIsImporting(true);
     setMessage('');
+    console.log('[心光] 导入文件:', file.name, '大小:', file.size, '类型:', file.type, '目标分类:', importCategory);
 
     try {
       const text = await file.text();
+      console.log('[心光] 文件内容前100字符:', text.substring(0, 100));
       const creds = await getCredentialsAsync();
       if (!creds) {
         setMessage('请先配置坚果云账号');
@@ -93,7 +107,7 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
       let importedCount = 0;
 
       if (file.name.endsWith('.json')) {
-        // JSON import
+        // JSON import - 使用原始分类，忽略分类选择器
         const importedEntries = JSON.parse(text);
         if (!Array.isArray(importedEntries)) {
           throw new Error('JSON 格式错误：应为数组');
@@ -103,22 +117,14 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
           const content = entry.content || '';
           if (!content.trim()) continue;
 
-          const now = new Date(entry.date || new Date());
-          const timeStr = entry.time || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
           const type = entry.type || 'chat';
-
-          let formattedContent = `${timeStr} ${content}`;
-          if (type === 'todo') {
-            formattedContent = `- [ ] ${formattedContent}`;
-          }
-
-          const target = type === 'todo' ? 'todo' : type === 'journal' ? 'journal' : 'chat';
+          const target = type === 'todo' ? 'todo' : type === 'journal' ? 'journal' : type === 'idea' ? 'idea' : type === 'note' ? 'note' : 'chat';
           const { addEntry } = useSummaryStore.getState();
           const success = await addEntry(content, target);
           if (success) importedCount++;
         }
-      } else if (file.name.endsWith('.md')) {
-        // Markdown import - parse lines
+      } else if (file.name.endsWith('.md') || file.name.endsWith('.markdown') || file.name.endsWith('.txt')) {
+        // Markdown/TXT import - 使用用户选择的分类
         const lines = text.split('\n');
         const { addEntry } = useSummaryStore.getState();
 
@@ -130,30 +136,34 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
           if (trimmed.startsWith('导出时间:')) continue;
 
           let content = trimmed;
-          let type: 'chat' | 'todo' | 'journal' = 'chat';
 
+          // 检测待办格式（如果文件中有 - [ ] 格式，自动识别为待办）
+          let detectedType = importCategory;
           if (content.startsWith('- [ ] ') || content.startsWith('- [x] ')) {
             content = content.replace(/^[-*]\s*\[[x ]\]\s*/, '');
-            type = 'todo';
+            detectedType = 'todo';
           }
 
           // Remove time prefix for import
           content = content.replace(/^\d{1,2}:\d{2}\s*-?\s*/, '');
+          content = content.replace(/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}\s*/, '');
 
           if (content.trim()) {
-            const success = await addEntry(content.trim(), type);
+            const success = await addEntry(content.trim(), detectedType);
             if (success) importedCount++;
           }
         }
       } else {
-        throw new Error('不支持的文件格式，请使用 .json 或 .md 文件');
+        throw new Error(`不支持的文件格式: ${file.name}，请使用 .json、.md 或 .txt 文件`);
       }
 
-      setMessage(`成功导入 ${importedCount} 条记录`);
+      setMessage(`成功导入 ${importedCount} 条记录\n文件名: ${file.name}`);
       setMessageType('success');
       loadEntries();
     } catch (err) {
-      setMessage('导入失败: ' + (err instanceof Error ? err.message : '未知错误'));
+      const errorMsg = err instanceof Error ? err.message : '未知错误';
+      console.error('[心光] 导入失败:', err);
+      setMessage(`导入失败: ${errorMsg}\n文件名: ${file.name}\n文件大小: ${file.size} 字节`);
       setMessageType('error');
     } finally {
       setIsImporting(false);
@@ -203,27 +213,56 @@ export function ImportExportModal({ onClose }: ImportExportModalProps) {
             <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <Upload className="w-4 h-4" /> 导入数据
             </h3>
+            
+            {/* 分类选择器（仅对 MD/TXT 生效） */}
+            <div className="mb-3">
+              <p className="text-xs text-gray-500 mb-2">选择分类（MD/TXT 文件使用）：</p>
+              <div className="flex flex-wrap gap-1.5">
+                {IMPORT_CATEGORIES.map((cat) => {
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setImportCategory(cat.id)}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                        importCategory === cat.id
+                          ? `${cat.color} text-white`
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-colors">
               <Upload className="w-5 h-5 text-gray-400" />
-              <span className="text-sm text-gray-600">选择 JSON 或 Markdown 文件</span>
+              <span className="text-sm text-gray-600">选择 JSON、Markdown 或文本文件</span>
               <input
                 type="file"
-                accept=".json,.md"
+                accept=".json,.md,.txt,.markdown"
                 onChange={handleImport}
                 disabled={isImporting}
                 className="hidden"
               />
             </label>
-            <p className="text-xs text-gray-400 mt-1">支持 .json 和 .md 格式</p>
+            <p className="text-xs text-gray-400 mt-1">
+              支持 .json、.md 和 .txt 格式<br/>
+              <span className="text-amber-600">* JSON 文件保留原分类，MD/TXT 使用上方选择的分类</span>
+            </p>
           </div>
 
           {/* 消息提示 */}
           {message && (
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-pre-line ${
               messageType === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
             }`}>
-              {messageType === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              {message}
+              {messageType === 'success' ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+              <span>{message}</span>
             </div>
           )}
         </div>
